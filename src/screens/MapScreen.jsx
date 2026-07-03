@@ -1,62 +1,89 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PLATFORMS, RESTAURANT_ZONES } from '../lib/platforms'
 import { mockSurgeZones, mockEvents } from '../lib/mockData'
 import { Card, SectionLabel, Badge, IconBox } from '../components/UI'
 
 const filters = ['Surge zones', 'Hot zones', 'Events']
 
+// City coordinates for map centering
+const CITY_COORDS = {
+  'Chicago':       { lat: 41.8781, lng: -87.6298, zoom: 12 },
+  'New York':      { lat: 40.7128, lng: -74.0060, zoom: 12 },
+  'Los Angeles':   { lat: 34.0522, lng: -118.2437, zoom: 11 },
+  'Houston':       { lat: 29.7604, lng: -95.3698, zoom: 11 },
+  'Phoenix':       { lat: 33.4484, lng: -112.0740, zoom: 11 },
+  'default':       { lat: 41.8781, lng: -87.6298, zoom: 12 },
+}
+
 export default function MapScreen({ surge, driver }) {
   const [activeFilter, setActiveFilter] = useState('Surge zones')
+  const [userLocation, setUserLocation] = useState(null)
+  const [locationError, setLocationError] = useState(null)
   const driverPlatforms = driver?.platforms || ['uber']
   const hasDelivery = driverPlatforms.some(id => PLATFORMS[id]?.type === 'delivery')
+  const city = driver?.city || 'Chicago'
+  const cityCoords = CITY_COORDS[city] || CITY_COORDS.default
+
+  // Get real GPS location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => setLocationError('Location access denied — showing city center'),
+        { timeout: 8000 }
+      )
+    } else {
+      setLocationError('Geolocation not supported')
+    }
+  }, [])
+
+  const mapCenter = userLocation || cityCoords
+  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${mapCenter.lng - 0.05},${mapCenter.lat - 0.03},${mapCenter.lng + 0.05},${mapCenter.lat + 0.03}&layer=mapnik&marker=${mapCenter.lat},${mapCenter.lng}`
 
   return (
     <div className="screen">
+      {/* Real map via OpenStreetMap embed */}
       <div style={{ position:'relative', height:240, background:'#1e2330', overflow:'hidden' }}>
-        <svg width="100%" height="100%" style={{ position:'absolute', inset:0 }}>
-          <defs><pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1"/></pattern></defs>
-          <rect width="100%" height="100%" fill="url(#grid)"/>
-          <rect x="0" y="55" width="100%" height="4" fill="rgba(255,255,255,0.1)" rx="2"/>
-          <rect x="0" y="140" width="100%" height="5" fill="rgba(255,255,255,0.14)" rx="2"/>
-          <rect x="80" y="0" width="4" height="100%" fill="rgba(255,255,255,0.1)" rx="2"/>
-          <rect x="200" y="0" width="5" height="100%" fill="rgba(255,255,255,0.14)" rx="2"/>
-          <circle cx="110" cy="80" r="55" fill="rgba(226,75,74,0.18)"/>
-          <circle cx="110" cy="80" r="30" fill="rgba(226,75,74,0.22)"/>
-          <circle cx="230" cy="150" r="42" fill="rgba(239,159,39,0.16)"/>
-          <circle cx="60" cy="160" r="36" fill="rgba(29,158,117,0.14)"/>
-          {hasDelivery && <>
-            <circle cx="180" cy="60" r="20" fill="rgba(255,48,8,0.25)"/>
-            <circle cx="260" cy="100" r="16" fill="rgba(6,193,103,0.25)"/>
-          </>}
-          <rect x="55" y="44" width="78" height="18" rx="4" fill="rgba(0,0,0,0.5)"/>
-          <text x="64" y="57" fill="#fff" fontSize="10" fontFamily="DM Sans,sans-serif" fontWeight="500">Downtown</text>
-          <rect x="196" y="132" width="56" height="18" rx="4" fill="rgba(0,0,0,0.5)"/>
-          <text x="205" y="145" fill="#fff" fontSize="10" fontFamily="DM Sans,sans-serif" fontWeight="500">Midtown</text>
-          {hasDelivery && <>
-            <rect x="155" y="48" width="52" height="16" rx="4" fill="rgba(255,48,8,0.7)"/>
-            <text x="162" y="60" fill="#fff" fontSize="9" fontFamily="DM Sans,sans-serif" fontWeight="600">DD Hot Zone</text>
-            <rect x="238" y="88" width="46" height="16" rx="4" fill="rgba(6,193,103,0.7)"/>
-            <text x="244" y="100" fill="#fff" fontSize="9" fontFamily="DM Sans,sans-serif" fontWeight="600">UE Boost</text>
-          </>}
-          <rect x="148" y="22" width="64" height="20" rx="10" fill="#EF9F27"/>
-          <text x="158" y="36" fill="#141414" fontSize="10" fontFamily="DM Sans,sans-serif" fontWeight="600">2.1x surge</text>
-          <circle cx="168" cy="110" r="10" fill="rgba(59,130,246,0.25)"/>
-          <circle cx="168" cy="110" r="6" fill="#3b82f6" stroke="#fff" strokeWidth="2"/>
-          <rect x="144" y="90" width="28" height="16" rx="3" fill="rgba(0,0,0,0.5)"/>
-          <text x="152" y="102" fill="#fff" fontSize="9" fontFamily="DM Sans,sans-serif">You</text>
-        </svg>
-        <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'linear-gradient(transparent,rgba(0,0,0,0.7))', padding:'20px 12px 10px', display:'flex', gap:7 }}>
+        <iframe
+          src={mapUrl}
+          style={{ width:'100%', height:'100%', border:'none', filter:'saturate(0.8) brightness(0.85)' }}
+          title="Driver location map"
+          loading="lazy"
+        />
+        {/* Overlay chips */}
+        <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'linear-gradient(transparent,rgba(0,0,0,0.75))', padding:'20px 12px 10px', display:'flex', gap:7 }}>
           {filters.filter(f => f !== 'Hot zones' || hasDelivery).map(f => (
             <button key={f} onClick={() => setActiveFilter(f)} style={{ fontSize:12, fontWeight:500, padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer', background: activeFilter===f?'var(--amber)':'rgba(255,255,255,0.18)', color: activeFilter===f?'#141414':'rgba(255,255,255,0.9)', transition:'all 0.15s' }}>
               {f}
             </button>
           ))}
         </div>
+        {/* Location status */}
+        <div style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.6)', borderRadius:20, padding:'3px 10px', fontSize:11, color: userLocation?'#1D9E75':'rgba(255,255,255,0.6)', display:'flex', alignItems:'center', gap:4 }}>
+          <div style={{ width:6, height:6, borderRadius:'50%', background: userLocation?'#1D9E75':'rgba(255,255,255,0.4)' }}/>
+          {userLocation ? `${city} — Live` : locationError || 'Getting location...'}
+        </div>
+      </div>
+
+      {/* Location info bar */}
+      <div style={{ background:'var(--surface)', padding:'8px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8 }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+        <span style={{ fontSize:12, color:'var(--text-secondary)' }}>
+          {userLocation
+            ? `Your location: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`
+            : `Showing: ${city} city center`
+          }
+        </span>
+        {userLocation && (
+          <span style={{ marginLeft:'auto', fontSize:11, color:'var(--teal)', fontWeight:500 }}>● Live GPS</span>
+        )}
       </div>
 
       <div style={{ padding:'0 16px' }}>
         {activeFilter === 'Surge zones' && <>
-          <SectionLabel>Live surge zones</SectionLabel>
+          <SectionLabel>Live surge zones near {city}</SectionLabel>
           <Card style={{ padding:0, overflow:'hidden', marginBottom:10 }}>
             {mockSurgeZones.map((z,i) => (
               <div key={z.name} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: i<mockSurgeZones.length-1?'1px solid var(--border)':'none' }}>
@@ -69,10 +96,13 @@ export default function MapScreen({ surge, driver }) {
               </div>
             ))}
           </Card>
+          <div style={{ fontSize:12, color:'var(--text-muted)', textAlign:'center', marginBottom:10 }}>
+            Surge data crowdsourced from Co-Pilot drivers · updates every 3 min
+          </div>
         </>}
 
         {activeFilter === 'Hot zones' && hasDelivery && <>
-          <SectionLabel>Delivery hot zones</SectionLabel>
+          <SectionLabel>Delivery hot zones in {city}</SectionLabel>
           <Card style={{ padding:0, overflow:'hidden', marginBottom:10 }}>
             {RESTAURANT_ZONES.map((z,i) => (
               <div key={z.name} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: i<RESTAURANT_ZONES.length-1?'1px solid var(--border)':'none' }}>
@@ -95,7 +125,7 @@ export default function MapScreen({ surge, driver }) {
         </>}
 
         {activeFilter === 'Events' && <>
-          <SectionLabel>Upcoming events</SectionLabel>
+          <SectionLabel>Events driving demand tonight</SectionLabel>
           <Card style={{ padding:0, overflow:'hidden' }}>
             {mockEvents.map((ev,i) => (
               <div key={ev.title} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: i<mockEvents.length-1?'1px solid var(--border)':'none' }}>

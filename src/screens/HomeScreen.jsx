@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PLATFORMS, PLATFORM_EARNINGS, OPTIMIZATION_SIGNALS } from '../lib/platforms'
 import { mockGoal } from '../lib/mockData'
 import { Card, SectionLabel, AINudge, ProgressBar } from '../components/UI'
+import { getActiveShift, computeShiftStats } from '../lib/shiftService'
 
 const levelColors = { low:'#E8E7E3', med:'rgba(29,158,117,0.3)', high:'#1D9E75', peak:'#EF9F27' }
 const mockHours = [{l:'6a',v:'low'},{l:'7',v:'med'},{l:'8',v:'high'},{l:'9',v:'peak'},{l:'10',v:'high'},{l:'11',v:'med'},{l:'12p',v:'low'},{l:'1',v:'low'},{l:'4',v:'med'},{l:'5',v:'peak'},{l:'6',v:'high'},{l:'11p',v:'med'}]
@@ -39,7 +40,9 @@ function OptSignal({ signal }) {
   )
 }
 
-export default function HomeScreen({ driver }) {
+export default function HomeScreen({ driver, avatar, onTabChange }) {
+  const activeShift = getActiveShift()
+  const shiftStats = activeShift ? computeShiftStats(activeShift) : null
   const driverPlatforms = driver?.platforms || ['uber']
   const [activePlatform, setActivePlatform] = useState('all')
   const totalToday = driverPlatforms.reduce((s,id) => s+(PLATFORM_EARNINGS[id]?.today||0), 0)
@@ -54,8 +57,19 @@ export default function HomeScreen({ driver }) {
   return (
     <div className="screen" style={{ padding:'0 16px' }}>
       <div style={{ padding:'20px 0 4px' }}>
-        <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:2 }}>good morning</div>
-        <div style={{ fontSize:24, fontWeight:600, letterSpacing:'-0.3px' }}>{driver?.name||'Driver'} 👋</div>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:2 }}>good morning</div>
+            <div style={{ fontSize:24, fontWeight:600, letterSpacing:'-0.3px' }}>{driver?.name||'Driver'} 👋</div>
+          </div>
+          {/* Avatar in header */}
+          <div style={{ width:40, height:40, borderRadius:'50%', background: avatar?'transparent':'linear-gradient(135deg, var(--amber), var(--teal))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:600, color:'#fff', overflow:'hidden', border:'2px solid var(--border)', flexShrink:0 }}>
+            {avatar
+              ? <img src={avatar} alt="profile" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+              : (driver?.name||'D')[0]
+            }
+          </div>
+        </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:8 }}>
           <div style={{ width:7, height:7, borderRadius:'50%', background:'var(--teal)' }}/>
           <span style={{ fontSize:13, color:'var(--text-secondary)' }}>Online · 2h 14m today</span>
@@ -71,6 +85,19 @@ export default function HomeScreen({ driver }) {
             <div style={{ fontSize:10, color: activePlatform==='all'?'rgba(255,255,255,0.5)':'var(--text-muted)' }}>today</div>
           </button>
           {driverPlatforms.map(id => <PlatformPill key={id} id={id} earnings={PLATFORM_EARNINGS[id]} active={activePlatform===id} onClick={setActivePlatform}/>)}
+        </div>
+      )}
+
+      {/* Active shift banner */}
+      {shiftStats && (
+        <div onClick={() => onTabChange && onTabChange('shift')} style={{ background:'#141414', borderRadius:14, padding:'12px 16px', margin:'12px 0 0', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
+          <div style={{ width:8, height:8, borderRadius:'50%', background:'#1D9E75', animation:'pulse 2s infinite', flexShrink:0 }}/>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>Shift live · {shiftStats.elapsedLabel}</div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)' }}>{shiftStats.tripCount} trips · ${shiftStats.grossPerHour}/hr gross</div>
+          </div>
+          <div style={{ fontSize:18, fontWeight:700, color:'var(--amber)' }}>${shiftStats.grossEarnings.toFixed(2)}</div>
+          <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
         </div>
       )}
 

@@ -1,9 +1,9 @@
 const tabs = [
-  { id: 'home',     label: 'Home',    icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
-  { id: 'planner',  label: 'Planner', icon: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' },
-  { id: 'ai',       label: 'AI',      icon: null },
-  { id: 'board',    label: 'Ranks',   icon: 'M18 20V10M12 20V4M6 20v-6' },
-  { id: 'profile',  label: 'More',    icon: 'M4 6h16M4 12h16M4 18h16' },
+  { id:'home',      label:'Home',    icon:'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+  { id:'shift',     label:'Shift',   icon:'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
+  { id:'ai',        label:'AI',      icon:null },
+  { id:'evaluator', label:'Offers',  icon:'M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
+  { id:'more',      label:'More',    icon:'M4 6h16M4 12h16M4 18h16' },
 ]
 
 export default function BottomNav({ active, onChange, notifCount = 0 }) {

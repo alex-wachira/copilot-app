@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { PLATFORMS } from '../lib/platforms'
 import { Card, SectionLabel } from '../components/UI'
+import { getUnlockedAchievements } from '../lib/shiftService'
 
 const PRO_FEATURES = [
   { icon: 'bolt', label: 'Live surge zone map', desc: 'Real-time heatmap with multipliers' },
@@ -21,25 +22,39 @@ const menuItems = [
   { icon: 'receipt', label: 'Tax center', sub: 'Deductions, mileage, reports', tab: 'taxes' },
   { icon: 'bell', label: 'Notifications', sub: 'Alerts & updates', tab: 'notifs' },
   { icon: 'trophy', label: 'Leaderboard', sub: 'City rankings', tab: 'board' },
+  { icon: 'chart-bar', label: 'Shift planner', sub: '7-day AI schedule + tip estimator', tab: 'planner' },
 ]
 
-export default function ProfileScreen({ driver, onSignOut, onTabChange }) {
-  const [avatar, setAvatar]         = useState(null)
+export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOut, onTabChange }) {
   const [showPro, setShowPro]       = useState(false)
   const [editGoal, setEditGoal]     = useState(false)
   const [weeklyGoal, setWeeklyGoal] = useState(driver?.weeklyGoal || 1000)
   const [city, setCity]             = useState(driver?.city || 'Chicago')
   const [notifications, setNotifs]  = useState(true)
+  const [darkMode, setDarkMode]     = useState(() => localStorage.getItem('copilot_theme') === 'dark')
+  const [uploading, setUploading]   = useState(false)
+  const achievements                = getUnlockedAchievements()
+  const unlockedCount               = achievements.filter(a => a.unlocked).length
+
+  const toggleDarkMode = () => {
+    const next = !darkMode
+    setDarkMode(next)
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
+    localStorage.setItem('copilot_theme', next ? 'dark' : 'light')
+  }
   const fileRef                     = useRef(null)
   const platforms                   = driver?.platforms || ['uber']
 
   const handleAvatarChange = (e) => {
     const file = e.target.files[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (ev) => setAvatar(ev.target.result)
-      reader.readAsDataURL(file)
+    if (!file) return
+    setUploading(true)
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      await onAvatarChange(file, ev.target.result)
+      setUploading(false)
     }
+    reader.readAsDataURL(file)
   }
 
   return (
@@ -53,23 +68,29 @@ export default function ProfileScreen({ driver, onSignOut, onTabChange }) {
       <Card style={{ marginBottom:10 }}>
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
           <div style={{ position:'relative', flexShrink:0 }}>
-            <div onClick={()=>fileRef.current?.click()} style={{ width:60, height:60, borderRadius:'50%', background: avatar?'transparent':'linear-gradient(135deg, var(--amber), var(--teal))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, fontWeight:600, color:'#fff', cursor:'pointer', overflow:'hidden', border:'2px solid var(--border)' }}>
+            <div onClick={()=>!uploading && fileRef.current?.click()} style={{ width:60, height:60, borderRadius:'50%', background: avatar?'transparent':'linear-gradient(135deg, var(--amber), var(--teal))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, fontWeight:600, color:'#fff', cursor: uploading?'wait':'pointer', overflow:'hidden', border:'2px solid var(--border)', opacity: uploading?0.7:1, transition:'opacity 0.2s' }}>
               {avatar
                 ? <img src={avatar} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
                 : (driver?.name||'D')[0]
               }
             </div>
-            {/* Camera overlay */}
-            <div onClick={()=>fileRef.current?.click()} style={{ position:'absolute', bottom:0, right:0, width:20, height:20, borderRadius:'50%', background:'#141414', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', border:'2px solid var(--bg)' }}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
-              </svg>
+            {/* Camera / uploading overlay */}
+            <div onClick={()=>!uploading && fileRef.current?.click()} style={{ position:'absolute', bottom:0, right:0, width:20, height:20, borderRadius:'50%', background: uploading?'var(--teal)':'#141414', display:'flex', alignItems:'center', justifyContent:'center', cursor: uploading?'wait':'pointer', border:'2px solid var(--bg)', transition:'background 0.2s' }}>
+              {uploading
+                ? <div style={{ width:8, height:8, border:'2px solid rgba(255,255,255,0.4)', borderTopColor:'#fff', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
+                : <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                  </svg>
+              }
             </div>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display:'none' }}/>
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </div>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:17, fontWeight:600 }}>{driver?.name||'Driver'}</div>
-            <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Tap photo to update</div>
+            <div style={{ fontSize:12, color: uploading?'var(--teal)':'var(--text-muted)', marginTop:2 }}>
+              {uploading ? 'Uploading...' : 'Tap photo to update'}
+            </div>
             <div style={{ display:'flex', gap:4, marginTop:6, flexWrap:'wrap' }}>
               {platforms.map(id=><span key={id} style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, background:'var(--gray-50)', color:'var(--text-muted)' }}>{PLATFORMS[id]?.name}</span>)}
             </div>
@@ -153,6 +174,17 @@ export default function ProfileScreen({ driver, onSignOut, onTabChange }) {
           </div>
         </div>
 
+        {/* Dark mode toggle */}
+        <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:500 }}>Dark mode</div>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>Easier on the eyes for night shifts</div>
+          </div>
+          <div onClick={toggleDarkMode} style={{ width:44, height:24, borderRadius:12, background:darkMode?'var(--teal)':'var(--gray-50)', border:`1px solid ${darkMode?'var(--teal)':'var(--border)'}`, cursor:'pointer', position:'relative', transition:'all 0.2s' }}>
+            <div style={{ position:'absolute', top:2, left:darkMode?22:2, width:18, height:18, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)' }}/>
+          </div>
+        </div>
+
         {/* Privacy */}
         <div style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
           <div style={{ flex:1 }}>
@@ -160,6 +192,19 @@ export default function ProfileScreen({ driver, onSignOut, onTabChange }) {
             <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>Manage your data and permissions</div>
           </div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </Card>
+
+      {/* Achievements */}
+      <SectionLabel>Achievements · {unlockedCount}/{achievements.length}</SectionLabel>
+      <Card style={{ marginBottom:10, padding:'12px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8 }}>
+          {achievements.map(a => (
+            <div key={a.id} title={a.desc} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'8px 2px', borderRadius:10, background: a.unlocked?'var(--amber-light)':'var(--gray-50)', opacity: a.unlocked?1:0.45 }}>
+              <div style={{ fontSize:22, filter: a.unlocked?'none':'grayscale(1)' }}>{a.emoji}</div>
+              <div style={{ fontSize:9, fontWeight:600, color: a.unlocked?'var(--amber-dark)':'var(--text-muted)', textAlign:'center', lineHeight:1.2 }}>{a.label}</div>
+            </div>
+          ))}
         </div>
       </Card>
 
