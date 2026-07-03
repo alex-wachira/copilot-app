@@ -12,6 +12,8 @@ import ShiftPlannerScreen from './screens/ShiftPlannerScreen'
 import LeaderboardScreen from './screens/LeaderboardScreen'
 import OfferEvaluatorScreen from './screens/OfferEvaluatorScreen'
 import ShiftScreen from './screens/ShiftScreen'
+import ResetPasswordScreen from './screens/ResetPasswordScreen'
+import { supabase } from './lib/supabase'
 import BottomNav from './components/BottomNav'
 import SurgeReportPrompt from './components/SurgeReportPrompt'
 import { useSurge } from './lib/useSurge'
@@ -22,6 +24,18 @@ export default function App() {
   const [driver, setDriver] = useState(null)
   const [tab, setTab]       = useState('home')
   const [avatar, setAvatar] = useState(() => loadAvatarUrl() || loadLocalAvatar())
+  const [recoveryMode, setRecoveryMode] = useState(false)
+
+  // Detect password recovery link from email
+  useEffect(() => {
+    // Immediate check: recovery links contain type=recovery in the URL hash
+    if (window.location.hash.includes('type=recovery')) setRecoveryMode(true)
+    // Also listen for the official event
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true)
+    })
+    return () => sub?.subscription?.unsubscribe()
+  }, [])
 
   // Apply saved theme on load
   useEffect(() => {
@@ -59,6 +73,8 @@ export default function App() {
     setDriver(null)
     setTab('home')
   }
+
+  if (recoveryMode) return <ResetPasswordScreen onDone={() => { setRecoveryMode(false); window.location.hash = ''; }} />
 
   if (!driver) return <AuthScreen onAuth={setDriver} />
 

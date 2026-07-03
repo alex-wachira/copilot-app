@@ -66,7 +66,7 @@ export default function AuthScreen({ onAuth }) {
     if (!email) { setError('Enter your email address first'); return }
     setLoading(true)
     try {
-      await supabase.auth.resetPasswordForEmail(email, { redirectTo: 'https://drivercopilot.app/reset' })
+      await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
       setForgotSent(true)
       setError('')
     } catch { setError('Could not send reset email — try again') }
@@ -133,8 +133,8 @@ export default function AuthScreen({ onAuth }) {
 
               {/* Forgot password */}
               {mode==='login'&&(
-                <button type="button" onClick={handleForgotPassword} disabled={loading} style={{ background:'none', border:'none', fontSize:13, color:'var(--text-muted)', cursor:'pointer', textAlign:'center', padding:'4px 0' }}>
-                  Forgot password? {email?'Send reset link':'(enter email above first)'}
+                <button type="button" onClick={handleForgotPassword} disabled={loading} style={{ background:'none', border:'none', fontSize:14, fontWeight:500, color: email?'var(--teal)':'var(--text-muted)', cursor:'pointer', textAlign:'center', padding:'6px 0', textDecoration: email?'underline':'none' }}>
+                  {email ? 'Forgot password? Send reset link' : 'Forgot password? Enter your email above first'}
                 </button>
               )}
             </form>
