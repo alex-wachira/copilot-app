@@ -13,6 +13,7 @@ import LeaderboardScreen from './screens/LeaderboardScreen'
 import OfferEvaluatorScreen from './screens/OfferEvaluatorScreen'
 import ShiftScreen from './screens/ShiftScreen'
 import ResetPasswordScreen from './screens/ResetPasswordScreen'
+import PrivacyScreen from './screens/PrivacyScreen'
 import { supabase } from './lib/supabase'
 import BottomNav from './components/BottomNav'
 import SurgeReportPrompt from './components/SurgeReportPrompt'
@@ -89,6 +90,7 @@ export default function App() {
     earnings:  <EarningsScreen driver={driver} />,
     taxes:     <TaxesScreen />,
     notifs:    <NotificationsScreen />,
+    privacy:   <PrivacyScreen driver={driver} onSignOut={handleSignOut} onBack={() => setTab('more')} />,
     more:      <ProfileScreen driver={driver} avatar={avatar} onAvatarChange={handleAvatarChange} onSignOut={handleSignOut} onTabChange={setTab} />,
   }
 

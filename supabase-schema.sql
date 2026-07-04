@@ -239,3 +239,20 @@ create policy "Avatars publicly viewable"
 create policy "Drivers manage own receipts"
   on storage.objects for all
   using (bucket_id = 'receipts' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- ============================================================
+-- Account deletion RPC (privacy / right-to-deletion)
+-- Lets a signed-in user permanently delete their own account.
+-- All tables cascade-delete via foreign keys.
+-- ============================================================
+create or replace function public.delete_user()
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from auth.users where id = auth.uid();
+$$;
+
+revoke execute on function public.delete_user() from public;
+grant execute on function public.delete_user() to authenticated;

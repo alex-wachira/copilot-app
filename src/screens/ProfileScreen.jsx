@@ -186,7 +186,7 @@ export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOu
         </div>
 
         {/* Privacy */}
-        <div style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+        <div onClick={() => onTabChange && onTabChange('privacy')} style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:13, fontWeight:500 }}>Privacy & data</div>
             <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>Manage your data and permissions</div>

@@ -94,14 +94,24 @@ export default function AIScreen({ driver }) {
           'anthropic-dangerous-direct-browser-access': 'true',
         },
         body:JSON.stringify({
-          model:'claude-sonnet-4-20250514',
+          model:'claude-sonnet-4-6',
           max_tokens:300,
           system:buildSystemPrompt(driver),
           messages:updated.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}))
         })
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role:'assistant', content:data.content?.[0]?.text||"Hit a snag — try again.", time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}) }])
+      let reply
+      if (data.content?.[0]?.text) {
+        reply = data.content[0].text
+      } else if (data.error?.message?.includes('api-key') || data.error?.type === 'authentication_error') {
+        reply = "⚠️ AI isn't connected yet — the Anthropic API key is missing or invalid. Ask your admin to check VITE_ANTHROPIC_API_KEY in Vercel settings."
+      } else if (data.error?.message) {
+        reply = `⚠️ AI error: ${data.error.message}`
+      } else {
+        reply = "Hit a snag — try again."
+      }
+      setMessages(prev => [...prev, { role:'assistant', content:reply, time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}) }])
     } catch {
       setMessages(prev => [...prev, { role:'assistant', content:"Connection issue — check back in a moment.", time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}) }])
     } finally { setLoading(false) }
