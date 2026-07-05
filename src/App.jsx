@@ -20,6 +20,8 @@ import SurgeReportPrompt from './components/SurgeReportPrompt'
 import { useSurge } from './lib/useSurge'
 import { mockNotifications } from './lib/notifications'
 import { loadLocalAvatar, loadAvatarUrl, saveAvatarLocally, clearAvatar, uploadAvatarToSupabase } from './lib/avatarService'
+import { checkUpgradeReturn, syncPlanFromSupabase } from './lib/proService'
+import { loadCity } from './lib/cityService'
 
 export default function App() {
   const [driver, setDriver] = useState(null)
@@ -29,6 +31,11 @@ export default function App() {
 
   // Detect password recovery link from email
   useEffect(() => {
+    // Stripe checkout return — mark as Pro
+    checkUpgradeReturn().then(upgraded => {
+      if (upgraded) alert('🎉 Welcome to Co-Pilot Pro! All features are now unlocked.')
+    })
+    syncPlanFromSupabase()
     // Immediate check: recovery links contain type=recovery in the URL hash
     if (window.location.hash.includes('type=recovery')) setRecoveryMode(true)
     // Also listen for the official event

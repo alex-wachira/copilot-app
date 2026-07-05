@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css'
 import { PLATFORMS } from '../lib/platforms'
 import { Card, SectionLabel, Badge, IconBox } from '../components/UI'
 import { mockEvents } from '../lib/mockData'
+import { loadCity } from '../lib/cityService'
 
 const CITY_COORDS = {
   'Chicago':      { lat: 41.8781, lng: -87.6298 },
@@ -44,8 +45,9 @@ export default function MapScreen({ driver }) {
   const layersRef = useRef([])
   const driverPlatforms = driver?.platforms || ['uber']
   const hasDelivery = driverPlatforms.some(id => PLATFORMS[id]?.type === 'delivery')
-  const city = driver?.city || 'Chicago'
-  const center = CITY_COORDS[city] || CITY_COORDS['Chicago']
+  const savedCity = loadCity()
+  const city = savedCity?.label || driver?.city || 'Chicago'
+  const center = savedCity ? { lat: savedCity.lat, lng: savedCity.lng } : (CITY_COORDS[driver?.city] || CITY_COORDS['Chicago'])
 
   // Init map once
   useEffect(() => {

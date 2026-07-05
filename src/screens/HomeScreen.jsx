@@ -5,7 +5,21 @@ import { Card, SectionLabel, AINudge, ProgressBar } from '../components/UI'
 import { getActiveShift, computeShiftStats } from '../lib/shiftService'
 
 const levelColors = { low:'#E8E7E3', med:'rgba(29,158,117,0.3)', high:'#1D9E75', peak:'#EF9F27' }
-const mockHours = [{l:'6a',v:'low'},{l:'7',v:'med'},{l:'8',v:'high'},{l:'9',v:'peak'},{l:'10',v:'high'},{l:'11',v:'med'},{l:'12p',v:'low'},{l:'1',v:'low'},{l:'4',v:'med'},{l:'5',v:'peak'},{l:'6',v:'high'},{l:'11p',v:'med'}]
+const levelLabels = { low:'Slow', med:'Fair', high:'Good', peak:'Peak' }
+const mockHours = [
+  { l:'6a',  hr:6,  v:'low',  earn:14, why:'Early morning — light demand, mostly airport runs' },
+  { l:'7',   hr:7,  v:'med',  earn:19, why:'Commute starting — office workers heading downtown' },
+  { l:'8',   hr:8,  v:'high', earn:25, why:'Morning rush peak — strong ride demand citywide' },
+  { l:'9',   hr:9,  v:'peak', earn:31, why:'Peak commute + airport surge. Best morning window' },
+  { l:'10',  hr:10, v:'high', earn:24, why:'Rush tapering but airport demand stays strong' },
+  { l:'11',  hr:11, v:'med',  earn:18, why:'Mid-morning lull — early lunch orders starting' },
+  { l:'12p', hr:12, v:'low',  earn:15, why:'Lunch is delivery-heavy; rides slow down' },
+  { l:'1',   hr:13, v:'low',  earn:14, why:'Post-lunch dip — slowest stretch of the day' },
+  { l:'4',   hr:16, v:'med',  earn:20, why:'Evening commute building — position downtown' },
+  { l:'5',   hr:17, v:'peak', earn:33, why:'Evening rush peak — highest demand of the day' },
+  { l:'6',   hr:18, v:'high', earn:27, why:'Rush continues + dinner delivery orders spike' },
+  { l:'11p', hr:23, v:'med',  earn:21, why:'Bar traffic + concert at Chase Arena ends 11pm' },
+]
 
 function PlatformPill({ id, earnings, active, onClick }) {
   const p = PLATFORMS[id]
@@ -41,6 +55,7 @@ function OptSignal({ signal }) {
 }
 
 export default function HomeScreen({ driver, avatar, onTabChange }) {
+  const [selectedHour, setSelectedHour] = useState(null)
   const activeShift = getActiveShift()
   const shiftStats = activeShift ? computeShiftStats(activeShift) : null
   const driverPlatforms = driver?.platforms || ['uber']
@@ -145,14 +160,55 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
 
       <SectionLabel>Best hours today</SectionLabel>
       <Card style={{ marginBottom:16 }}>
-        <div style={{ display:'flex', gap:3, alignItems:'flex-end', height:40, marginBottom:6 }}>
-          {mockHours.map((h,i) => <div key={i} style={{ flex:1 }}><div style={{ width:'100%', height:h.v==='peak'?36:h.v==='high'?28:h.v==='med'?18:8, background:levelColors[h.v], borderRadius:'3px 3px 0 0' }}/></div>)}
+        <div style={{ display:'flex', gap:3, alignItems:'flex-end', height:52, marginBottom:6 }}>
+          {mockHours.map((h,i) => {
+            const isSelected = selectedHour === i
+            const isNow = new Date().getHours() === h.hr
+            return (
+              <button key={i} onClick={() => setSelectedHour(isSelected ? null : i)} style={{ flex:1, background:'none', border:'none', padding:0, cursor:'pointer', display:'flex', flexDirection:'column', justifyContent:'flex-end', height:'100%', position:'relative' }}>
+                {isNow && <div style={{ position:'absolute', top:-2, left:'50%', transform:'translateX(-50%)', fontSize:8, color:'var(--teal)', fontWeight:700 }}>NOW</div>}
+                <div style={{
+                  width:'100%',
+                  height: h.v==='peak'?40:h.v==='high'?30:h.v==='med'?20:9,
+                  background: levelColors[h.v],
+                  borderRadius:'3px 3px 0 0',
+                  transition:'all 0.15s',
+                  outline: isSelected ? '2px solid var(--text-primary)' : 'none',
+                  outlineOffset: 1,
+                  transform: isSelected ? 'scaleY(1.08)' : 'none',
+                  transformOrigin:'bottom',
+                }}/>
+              </button>
+            )
+          })}
         </div>
         <div style={{ display:'flex', gap:3 }}>
-          {mockHours.map((h,i) => <div key={i} style={{ flex:1, textAlign:'center', fontSize:9, color:'var(--text-muted)' }}>{h.l}</div>)}
+          {mockHours.map((h,i) => <div key={i} style={{ flex:1, textAlign:'center', fontSize:9, fontWeight: selectedHour===i?700:400, color: selectedHour===i?'var(--text-primary)':'var(--text-muted)' }}>{h.l}</div>)}
         </div>
+
+        {/* Tap detail panel */}
+        {selectedHour !== null && (() => {
+          const h = mockHours[selectedHour]
+          return (
+            <div style={{ marginTop:10, background: h.v==='peak'?'var(--amber-light)':h.v==='high'?'var(--teal-light)':'var(--gray-50)', borderRadius:12, padding:'12px 14px' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:15, fontWeight:700 }}>{h.l === '12p' ? '12pm' : h.l.includes('a')||h.l.includes('p') ? h.l+'m' : (h.hr < 12 ? h.l+'am' : h.l+'pm')}</span>
+                  <span style={{ fontSize:11, fontWeight:600, padding:'2px 9px', borderRadius:20, background: levelColors[h.v], color: h.v==='low'?'var(--text-secondary)':'#fff' }}>{levelLabels[h.v]}</span>
+                </div>
+                <div style={{ fontSize:16, fontWeight:700, color: h.v==='peak'?'var(--amber-dark)':'var(--teal-dark)' }}>~${h.earn}/hr</div>
+              </div>
+              <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.5 }}>{h.why}</div>
+              {(h.v==='peak'||h.v==='high') && (
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--teal-dark)', marginTop:6 }}>💡 Set a reminder to be online 15 min before</div>
+              )}
+            </div>
+          )
+        })()}
+
         <div style={{ display:'flex', gap:12, marginTop:10, fontSize:11, color:'var(--text-muted)' }}>
           {[['#EF9F27','Peak'],['#1D9E75','Good'],['rgba(29,158,117,0.3)','Fair']].map(([c,l]) => <span key={l} style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:c, display:'inline-block' }}/>{l}</span>)}
+          <span style={{ marginLeft:'auto' }}>Tap a bar for details</span>
         </div>
       </Card>
     </div>

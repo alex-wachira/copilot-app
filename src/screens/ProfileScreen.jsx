@@ -2,6 +2,8 @@ import { useState, useRef } from 'react'
 import { PLATFORMS } from '../lib/platforms'
 import { Card, SectionLabel } from '../components/UI'
 import { getUnlockedAchievements } from '../lib/shiftService'
+import { searchCities, saveCity, loadCity } from '../lib/cityService'
+import { startUpgrade, isPro } from '../lib/proService'
 
 const PRO_FEATURES = [
   { icon: 'bolt', label: 'Live surge zone map', desc: 'Real-time heatmap with multipliers' },
@@ -29,7 +31,29 @@ export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOu
   const [showPro, setShowPro]       = useState(false)
   const [editGoal, setEditGoal]     = useState(false)
   const [weeklyGoal, setWeeklyGoal] = useState(driver?.weeklyGoal || 1000)
-  const [city, setCity]             = useState(driver?.city || 'Chicago')
+  const [city, setCity]             = useState(() => loadCity()?.label || driver?.city || 'Chicago')
+  const [citySearch, setCitySearch] = useState('')
+  const [cityResults, setCityRes]   = useState([])
+  const [editCity, setEditCity]     = useState(false)
+  const pro                         = isPro()
+
+  const handleCitySearch = async (q) => {
+    setCitySearch(q)
+    if (q.length >= 2) setCityRes(await searchCities(q))
+    else setCityRes([])
+  }
+
+  const selectCity = (c) => {
+    saveCity(c)
+    setCity(c.label)
+    setEditCity(false)
+    setCitySearch('')
+    setCityRes([])
+  }
+
+  const handleUpgrade = () => {
+    startUpgrade(driver?.email)
+  }
   const [notifications, setNotifs]  = useState(true)
   const [darkMode, setDarkMode]     = useState(() => localStorage.getItem('copilot_theme') === 'dark')
   const [uploading, setUploading]   = useState(false)
@@ -95,11 +119,20 @@ export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOu
               {platforms.map(id=><span key={id} style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, background:'var(--gray-50)', color:'var(--text-muted)' }}>{PLATFORMS[id]?.name}</span>)}
             </div>
           </div>
-          <div style={{ background:'var(--teal-light)', color:'var(--teal-dark)', fontSize:12, fontWeight:600, padding:'4px 10px', borderRadius:20 }}>Free</div>
+          <div style={{ background: pro?'var(--amber-light)':'var(--teal-light)', color: pro?'var(--amber-dark)':'var(--teal-dark)', fontSize:12, fontWeight:600, padding:'4px 10px', borderRadius:20 }}>{pro?'👑 Pro':'Free'}</div>
         </div>
       </Card>
 
-      {/* Upgrade card */}
+      {/* Pro member card OR upgrade card */}
+      {pro ? (
+        <div style={{ background:'linear-gradient(135deg, #141414, #2a2410)', borderRadius:16, padding:'16px 18px', marginBottom:10, display:'flex', alignItems:'center', gap:12, border:'1px solid rgba(239,159,39,0.4)' }}>
+          <div style={{ fontSize:26 }}>👑</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:15, fontWeight:700, color:'var(--amber)' }}>Pro member</div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>All features unlocked · Manage billing via your Stripe email receipt</div>
+          </div>
+        </div>
+      ) : (
       <div style={{ background:'#141414', borderRadius:16, padding:'18px', marginBottom:10, position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', top:-20, right:-20, width:120, height:120, borderRadius:'50%', background:'rgba(239,159,39,0.12)' }}/>
         <div style={{ fontSize:11, color:'var(--amber)', fontWeight:600, letterSpacing:'0.05em', textTransform:'uppercase', marginBottom:4 }}>Go Pro — $12/mo</div>
@@ -121,11 +154,12 @@ export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOu
           {showPro?'Show less ↑':`+ ${PRO_FEATURES.length - 4} more features`}
         </button>
 
-        <button style={{ width:'100%', background:'var(--amber)', color:'#141414', border:'none', borderRadius:10, padding:'13px', fontSize:15, fontWeight:700, cursor:'pointer', marginTop:4 }}>
+        <button onClick={handleUpgrade} style={{ width:'100%', background:'var(--amber)', color:'#141414', border:'none', borderRadius:10, padding:'13px', fontSize:15, fontWeight:700, cursor:'pointer', marginTop:4 }}>
           Upgrade to Pro — $12/mo
         </button>
-        <div style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.3)', marginTop:8 }}>Cancel anytime · No contracts · Instant access</div>
+        <div style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.3)', marginTop:8 }}>Cancel anytime · No contracts · Secure checkout by Stripe</div>
       </div>
+      )}
 
       {/* Settings */}
       <SectionLabel>Settings</SectionLabel>
@@ -152,15 +186,41 @@ export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOu
           )}
         </div>
 
-        {/* Home city */}
-        <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:13, fontWeight:500 }}>Home city</div>
-            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>Used for surge predictions</div>
+        {/* Home city — search any US city */}
+        <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--border)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:500 }}>Home city</div>
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>{city} · used for maps & surge predictions</div>
+            </div>
+            <button onClick={()=>setEditCity(p=>!p)} style={{ fontSize:12, color:'var(--teal)', background:'none', border:'1px solid var(--teal-light)', borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:500 }}>
+              {editCity?'Cancel':'Change'}
+            </button>
           </div>
-          <select value={city} onChange={e=>setCity(e.target.value)} style={{ fontSize:13, border:'1px solid var(--border)', borderRadius:8, padding:'6px 10px', background:'var(--bg)', color:'var(--text-primary)', cursor:'pointer' }}>
-            {['Chicago','New York','Los Angeles','Houston','Phoenix','Philadelphia','San Antonio','San Diego','Dallas','San Jose'].map(c=><option key={c}>{c}</option>)}
-          </select>
+          {editCity && (
+            <div style={{ marginTop:10, position:'relative' }}>
+              <input
+                value={citySearch}
+                onChange={e=>handleCitySearch(e.target.value)}
+                placeholder="Type any US city or town…"
+                autoFocus
+                style={{ width:'100%', padding:'10px 12px', borderRadius:10, border:'1px solid var(--border)', background:'var(--bg)', fontSize:14, color:'var(--text-primary)', outline:'none', fontFamily:'DM Sans,sans-serif' }}
+              />
+              {cityResults.length > 0 && (
+                <div style={{ marginTop:6, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden', background:'var(--surface)' }}>
+                  {cityResults.map((c,i) => (
+                    <div key={i} onClick={()=>selectCity(c)} style={{ padding:'10px 12px', fontSize:13, borderBottom: i<cityResults.length-1?'1px solid var(--border)':'none', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      {c.label}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {citySearch.length >= 2 && cityResults.length === 0 && (
+                <div style={{ marginTop:6, fontSize:12, color:'var(--text-muted)', padding:'4px 2px' }}>Searching…</div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Notifications toggle */}
