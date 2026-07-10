@@ -8,10 +8,12 @@ import { useState } from 'react'
 import { evaluateOffer, blacklistRestaurant } from '../lib/automationEngine'
 import { PLATFORMS } from '../lib/platforms'
 import { Card, SectionLabel } from '../components/UI'
+import Arbitrator from '../components/Arbitrator'
 
 const PLATFORM_IDS = ['uber','lyft','doordash','ubereats','grubhub']
 
-export default function OfferEvaluatorScreen({ driver }) {
+export default function OfferEvaluatorScreen({ driver, onTabChange }) {
+  const [mode, setMode]             = useState('single')
   const [platform, setPlatform]     = useState('doordash')
   const [payout, setPayout]         = useState('')
   const [miles, setMiles]           = useState('')
@@ -46,8 +48,19 @@ export default function OfferEvaluatorScreen({ driver }) {
       <div style={{ padding:'20px 0 4px' }}>
         <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:2 }}>AI-powered</div>
         <div style={{ fontSize:24, fontWeight:600, letterSpacing:'-0.3px' }}>Offer Evaluator</div>
-        <div style={{ fontSize:13, color:'var(--text-secondary)', marginTop:4 }}>Enter offer details — get instant accept/decline advice</div>
+        <div style={{ fontSize:13, color:'var(--text-secondary)', marginTop:4 }}>{mode==='single' ? 'Enter offer details — get instant accept/decline advice' : 'Multiple pings at once? Compare them — take the true winner'}</div>
       </div>
+
+      {/* Mode toggle */}
+      <div style={{ display:'flex', gap:4, background:'rgba(0,0,0,0.06)', borderRadius:10, padding:4, margin:'12px 0 4px' }}>
+        {[['single','Single offer'],['arbitrate','⚖️ Arbitrator']].map(([m,label]) => (
+          <button key={m} onClick={()=>setMode(m)} style={{ flex:1, padding:'8px', borderRadius:7, border:'none', fontSize:13, fontWeight:600, background: mode===m?'var(--surface)':'transparent', color: mode===m?'var(--text-primary)':'var(--text-muted)', boxShadow: mode===m?'0 1px 3px rgba(0,0,0,0.08)':'none', cursor:'pointer', transition:'all 0.15s' }}>{label}</button>
+        ))}
+      </div>
+
+      {mode === 'arbitrate' && <div style={{ paddingTop:8 }}><Arbitrator driver={driver} onSetupVehicle={()=>onTabChange && onTabChange('vehicle')} /></div>}
+
+      {mode === 'single' && <>
 
       {/* Platform selector */}
       <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'12px 0 4px', scrollbarWidth:'none' }}>
@@ -147,6 +160,7 @@ export default function OfferEvaluatorScreen({ driver }) {
           </Card>
         </>
       )}
+      </>}
     </div>
   )
 }

@@ -14,6 +14,8 @@ import OfferEvaluatorScreen from './screens/OfferEvaluatorScreen'
 import ShiftScreen from './screens/ShiftScreen'
 import ResetPasswordScreen from './screens/ResetPasswordScreen'
 import PrivacyScreen from './screens/PrivacyScreen'
+import VehicleScreen from './screens/VehicleScreen'
+import OracleScreen from './screens/OracleScreen'
 import { supabase } from './lib/supabase'
 import BottomNav from './components/BottomNav'
 import SurgeReportPrompt from './components/SurgeReportPrompt'
@@ -91,13 +93,15 @@ export default function App() {
     map:       <MapScreen surge={surge} driver={driver} />,
     ai:        <AIScreen driver={driver} />,
     shift:     <ShiftScreen driver={driver} />,
-    evaluator: <OfferEvaluatorScreen driver={driver} />,
+    evaluator: <OfferEvaluatorScreen driver={driver} onTabChange={setTab} />,
     planner:   <ShiftPlannerScreen driver={driver} />,
     board:     <LeaderboardScreen driver={driver} />,
     earnings:  <EarningsScreen driver={driver} />,
     taxes:     <TaxesScreen />,
     notifs:    <NotificationsScreen />,
     privacy:   <PrivacyScreen driver={driver} onSignOut={handleSignOut} onBack={() => setTab('more')} />,
+    vehicle:   <VehicleScreen onBack={() => setTab('more')} />,
+    oracle:    <OracleScreen driver={driver} onBack={() => setTab('more')} />,
     more:      <ProfileScreen driver={driver} avatar={avatar} onAvatarChange={handleAvatarChange} onSignOut={handleSignOut} onTabChange={setTab} />,
   }
 

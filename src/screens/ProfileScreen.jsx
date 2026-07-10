@@ -19,6 +19,8 @@ const PRO_FEATURES = [
 ]
 
 const menuItems = [
+  { icon: 'map', label: '🔮 Event Oracle', sub: 'Future demand — get there first', tab: 'oracle' },
+  { icon: 'chart-bar', label: '🚗 My Vehicle', sub: 'Net profit, maintenance & tax vault', tab: 'vehicle' },
   { icon: 'chart-bar', label: 'Earnings history', sub: 'Weekly & monthly breakdowns', tab: 'earnings' },
   { icon: 'map', label: 'Surge map', sub: 'Live zones + hot zones', tab: 'map' },
   { icon: 'receipt', label: 'Tax center', sub: 'Deductions, mileage, reports', tab: 'taxes' },
