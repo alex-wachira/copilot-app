@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { PLATFORMS, PLATFORM_EARNINGS, OPTIMIZATION_SIGNALS } from '../lib/platforms'
-import { mockGoal, mockSurgeZones, mockEvents, mockTax } from '../lib/mockData'
+import { mockSurgeZones, mockEvents, mockTax } from '../lib/mockData'
+import { supabase } from '../lib/supabase'
 
-function buildSystemPrompt(driver) {
+// Driver facts only. The AI's instructions and the API key live in the
+// ai-chat edge function on Supabase, never in this file.
+function buildDriverContext(driver) {
   const platforms = driver?.platforms || ['uber']
   const goal = driver?.weeklyGoal || 1000
   const totalWeek = platforms.reduce((s,id) => s+(PLATFORM_EARNINGS[id]?.week||0), 0)
@@ -21,9 +24,7 @@ function buildSystemPrompt(driver) {
     .map(s => `- ${s.title}: ${s.earnDelta}${s.validUntil?' (until '+s.validUntil+')':''}`)
     .join('\n')
 
-  return `You are Co-Pilot AI, a sharp personal assistant for gig economy drivers. Speak like a knowledgeable friend — warm, direct, practical. Keep answers to 3-5 sentences since drivers check this between jobs.
-
-DRIVER: ${driver?.name||'Driver'} · ${driver?.city||'Chicago'}
+  return `DRIVER: ${driver?.name||'Driver'} · ${driver?.city||'Chicago'}
 PLATFORMS: ${platformNames} (${isDelivery?'includes delivery':'rideshare only'})
 WEEKLY GOAL: $${goal} · Earned: $${totalWeek} · Remaining: $${remaining} in 3 days
 
@@ -39,9 +40,7 @@ ${signals||'No active signals'}
 UPCOMING EVENTS:
 ${mockEvents.map(e=>`- ${e.title}: ${e.sub}`).join('\n')}
 
-TAX: Q2 estimate $${mockTax.estimate} due ${mockTax.due} · $${mockTax.saved} saved · $${mockTax.deductions.reduce((s,d)=>s+d.amount,0)} deductions found
-
-RULES: Always use real driver data. Never give generic advice. Do the math when asked about goals. For multi-app drivers, give cross-platform optimization advice. Be encouraging but honest.`
+TAX: Q2 estimate $${mockTax.estimate} due ${mockTax.due} · $${mockTax.saved} saved · $${mockTax.deductions.reduce((s,d)=>s+d.amount,0)} deductions found`
 }
 
 const QUICK_PROMPTS = [
@@ -85,31 +84,22 @@ export default function AIScreen({ driver }) {
     setInput('')
     setLoading(true)
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY || '',
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
+      // Ask the ai-chat robot on Supabase. It checks who you are, counts
+      // today's questions, and holds the Claude key on the server.
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
+          messages: updated.map(m => ({ role: m.role, content: m.content })),
+          context: buildDriverContext(driver),
         },
-        body:JSON.stringify({
-          model:'claude-sonnet-4-6',
-          max_tokens:300,
-          system:buildSystemPrompt(driver),
-          messages:updated.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}))
-        })
       })
-      const data = await res.json()
       let reply
-      if (data.content?.[0]?.text) {
-        reply = data.content[0].text
-      } else if (data.error?.message?.includes('api-key') || data.error?.type === 'authentication_error') {
-        reply = "⚠️ AI isn't connected yet — the Anthropic API key is missing or invalid. Ask your admin to check VITE_ANTHROPIC_API_KEY in Vercel settings."
-      } else if (data.error?.message) {
-        reply = `⚠️ AI error: ${data.error.message}`
+      if (!error && data?.text) {
+        reply = data.text
       } else {
-        reply = "Hit a snag — try again."
+        // The robot sends friendly messages for sign-in, daily limit and busy errors
+        let serverMsg = data?.error
+        try { serverMsg = serverMsg || (await error?.context?.json())?.error } catch {}
+        reply = serverMsg ? `⚠️ ${serverMsg}` : "Hit a snag — try again in a moment."
       }
       setMessages(prev => [...prev, { role:'assistant', content:reply, time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}) }])
     } catch {
