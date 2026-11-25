@@ -4,6 +4,8 @@
 // Stores city name + coordinates so maps center anywhere.
 // ============================================================
 
+import { store } from './userStorage'
+
 const CITY_KEY = 'copilot_city'
 
 // ── Search cities by name (autocomplete) ─────────────────────
@@ -44,12 +46,12 @@ function buildLabel(r) {
 
 // ── Save / load the driver's chosen city ─────────────────────
 export function saveCity(city) {
-  localStorage.setItem(CITY_KEY, JSON.stringify(city))
+  store.setItem(CITY_KEY, JSON.stringify(city))
 }
 
 export function loadCity() {
   try {
-    const raw = localStorage.getItem(CITY_KEY)
+    const raw = store.getItem(CITY_KEY)
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }

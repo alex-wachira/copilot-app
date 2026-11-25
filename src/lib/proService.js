@@ -5,6 +5,7 @@
 // + synced to Supabase drivers.plan
 // ============================================================
 
+import { store } from './userStorage'
 import { supabase } from './supabase'
 
 const PLAN_KEY = 'copilot_plan'
@@ -14,7 +15,7 @@ const PLAN_KEY = 'copilot_plan'
 const PAYMENT_LINK = import.meta.env.VITE_STRIPE_PAYMENT_LINK || ''
 
 export function getPlan() {
-  return localStorage.getItem(PLAN_KEY) || 'free'
+  return store.getItem(PLAN_KEY) || 'free'
 }
 
 export function isPro() {
@@ -48,14 +49,9 @@ export async function startUpgrade(driverEmail) {
 export async function checkUpgradeReturn() {
   const params = new URLSearchParams(window.location.search)
   if (params.get('upgraded') === 'true') {
-    localStorage.setItem(PLAN_KEY, 'pro')
-    // Sync to Supabase
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.id) {
-        await supabase.from('drivers').update({ plan: 'pro' }).eq('id', user.id)
-      }
-    } catch {}
+    // Show Pro on this device right away. The real switch in the database
+    // is made by the Stripe webhook (Day 4) — drivers can't set it themselves.
+    store.setItem(PLAN_KEY, 'pro')
     // Clean the URL
     window.history.replaceState({}, '', window.location.pathname)
     return true
@@ -70,7 +66,7 @@ export async function syncPlanFromSupabase() {
     if (!user?.id) return getPlan()
     const { data } = await supabase.from('drivers').select('plan').eq('id', user.id).single()
     if (data?.plan) {
-      localStorage.setItem(PLAN_KEY, data.plan)
+      store.setItem(PLAN_KEY, data.plan)
       return data.plan
     }
   } catch {}
@@ -78,5 +74,5 @@ export async function syncPlanFromSupabase() {
 }
 
 export function clearPlan() {
-  localStorage.removeItem(PLAN_KEY)
+  store.removeItem(PLAN_KEY)
 }

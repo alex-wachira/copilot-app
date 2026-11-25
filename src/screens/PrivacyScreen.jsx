@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState } from 'react'
+import { store } from '../lib/userStorage'
 import { supabase } from '../lib/supabase'
 import { Card, SectionLabel } from '../components/UI'
 import { getShiftHistory } from '../lib/shiftService'
@@ -73,7 +74,7 @@ export default function PrivacyScreen({ driver, onSignOut, onBack }) {
   // ── Clear local device data ────────────────────────────────
   const handleClearLocal = () => {
     const keys = ['copilot_active_shift','copilot_shift_history','copilot_avatar','copilot_avatar_url']
-    keys.forEach(k => localStorage.removeItem(k))
+    keys.forEach(k => store.removeItem(k))   // only this driver's drawer
     setCleared(true)
     setTimeout(() => setCleared(false), 3000)
   }

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { PLATFORMS, PLATFORM_LIST } from '../lib/platforms'
+import { markOnboarded } from '../lib/driverProfile'
 
 function PlatformBadge({ platform, selected, onToggle }) {
   const p = PLATFORMS[platform]
@@ -24,8 +25,9 @@ function PlatformBadge({ platform, selected, onToggle }) {
   )
 }
 
-export default function AuthScreen({ onAuth }) {
-  const [step, setStep]             = useState('account')
+export default function AuthScreen({ user, onAuth, onSaveSetup }) {
+  // Already signed in but setup not finished → jump straight to picking apps
+  const [step, setStep]             = useState(user ? 'platforms' : 'account')
   const [mode, setMode]             = useState('signup')
   const [email, setEmail]           = useState('')
   const [password, setPassword]     = useState('')
@@ -36,6 +38,9 @@ export default function AuthScreen({ onAuth }) {
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState('')
   const [forgotSent, setForgotSent] = useState(false)
+  const [confirmSent, setConfirmSent] = useState(false)
+
+  useEffect(() => { if (user && step === 'account') setStep('platforms') }, [user])
 
   const togglePlatform = (id) => setPlatforms(prev => prev.includes(id)?prev.filter(p=>p!==id):[...prev,id])
 
@@ -47,11 +52,20 @@ export default function AuthScreen({ onAuth }) {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        onAuth({ name: email.split('@')[0], platforms: ['uber'], weeklyGoal: 1000 })
+        await onAuth()   // App loads the real profile from the database
+        setLoading(false)
         return
       } else {
-        const { error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
         if (error) throw error
+        if (!data.session) {
+          // Email confirmation is on: they must click the link, then sign in
+          setConfirmSent(true)
+          setMode('login')
+          setLoading(false)
+          return
+        }
+        await onAuth()
       }
     } catch (err) {
       setError(err.message || 'Something went wrong — try again')
@@ -73,11 +87,21 @@ export default function AuthScreen({ onAuth }) {
     setLoading(false)
   }
 
-  const handleFinish = () => onAuth({
-    name: name || email.split('@')[0] || 'Driver',
-    platforms: platforms.length>0?platforms:['uber'],
-    weeklyGoal,
-  })
+  // Save the chosen apps + goal to the database, then open the app
+  const handleFinish = async () => {
+    setLoading(true)
+    setError('')
+    const changes = { platforms: platforms.length>0?platforms:['uber'], weeklyGoal }
+    if (name) changes.name = name
+    const res = await onSaveSetup(changes)
+    if (!res?.ok) {
+      setError('Could not save your settings — check your connection and try again')
+      setLoading(false)
+      return
+    }
+    await markOnboarded()
+    onSaveSetup({ onboarded: true })   // tells App setup is done → shows the home screen
+  }
 
   const steps = ['account','platforms','goal']
 
@@ -125,6 +149,7 @@ export default function AuthScreen({ onAuth }) {
               </div>
 
               {error&&<p style={{ fontSize:13, color:'var(--coral)', textAlign:'center', margin:0 }}>{error}</p>}
+              {confirmSent&&<p style={{ fontSize:13, color:'var(--teal)', textAlign:'center', margin:0 }}>✓ Check your email to confirm your account, then sign in here</p>}
               {forgotSent&&<p style={{ fontSize:13, color:'var(--teal)', textAlign:'center', margin:0 }}>✓ Reset link sent — check your email</p>}
 
               <button type="submit" disabled={loading} style={{ ...primaryBtn, opacity:loading?0.7:1 }}>
@@ -163,7 +188,8 @@ export default function AuthScreen({ onAuth }) {
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:20 }}>
               {[500,1000,1500].map(g=><button key={g} onClick={()=>setWeeklyGoal(g)} style={{ padding:'10px', borderRadius:10, border:'1px solid var(--border)', background:weeklyGoal===g?'#141414':'var(--surface)', color:weeklyGoal===g?'#fff':'var(--text-secondary)', fontSize:14, fontWeight:500, cursor:'pointer' }}>${g.toLocaleString()}</button>)}
             </div>
-            <button onClick={handleFinish} style={primaryBtn}>Let's go 🚀</button>
+            {error&&<p style={{ fontSize:13, color:'var(--coral)', textAlign:'center', margin:'0 0 10px' }}>{error}</p>}
+            <button onClick={handleFinish} disabled={loading} style={{ ...primaryBtn, opacity:loading?0.7:1 }}>{loading?'Saving…':"Let's go 🚀"}</button>
           </>
         )}
       </div>

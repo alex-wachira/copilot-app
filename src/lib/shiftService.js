@@ -4,6 +4,8 @@
 // real-time earnings per hour. Persists across refreshes.
 // ============================================================
 
+import { store } from './userStorage'
+
 const SHIFT_KEY = 'copilot_active_shift'
 const HISTORY_KEY = 'copilot_shift_history'
 
@@ -15,13 +17,13 @@ export function startShift(startingMileage = 0) {
     trips: [],
     expenses: [],
   }
-  localStorage.setItem(SHIFT_KEY, JSON.stringify(shift))
+  store.setItem(SHIFT_KEY, JSON.stringify(shift))
   return shift
 }
 
 export function getActiveShift() {
   try {
-    const raw = localStorage.getItem(SHIFT_KEY)
+    const raw = store.getItem(SHIFT_KEY)
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }
@@ -37,7 +39,7 @@ export function logTripToShift(trip) {
     miles: Number(trip.miles) || 0,
     loggedAt: new Date().toISOString(),
   })
-  localStorage.setItem(SHIFT_KEY, JSON.stringify(shift))
+  store.setItem(SHIFT_KEY, JSON.stringify(shift))
   return shift
 }
 
@@ -50,7 +52,7 @@ export function logExpenseToShift(expense) {
     amount: Number(expense.amount) || 0,
     loggedAt: new Date().toISOString(),
   })
-  localStorage.setItem(SHIFT_KEY, JSON.stringify(shift))
+  store.setItem(SHIFT_KEY, JSON.stringify(shift))
   return shift
 }
 
@@ -61,17 +63,17 @@ export function endShift(endingMileage = 0) {
   shift.endingMileage = endingMileage
   // Save to history
   try {
-    const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
+    const history = JSON.parse(store.getItem(HISTORY_KEY) || '[]')
     history.unshift(shift)
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 30)))
+    store.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 30)))
   } catch {}
-  localStorage.removeItem(SHIFT_KEY)
+  store.removeItem(SHIFT_KEY)
   return shift
 }
 
 export function getShiftHistory() {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
+    return JSON.parse(store.getItem(HISTORY_KEY) || '[]')
   } catch { return [] }
 }
 

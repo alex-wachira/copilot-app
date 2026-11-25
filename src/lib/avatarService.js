@@ -5,6 +5,7 @@
 // 2. Supabase Storage — permanent, syncs across devices
 // ============================================================
 
+import { store } from './userStorage'
 import { supabase } from './supabase'
 
 const AVATAR_KEY = 'copilot_avatar'
@@ -13,7 +14,7 @@ const AVATAR_URL_KEY = 'copilot_avatar_url'
 // ── Save avatar locally (instant, no network needed) ─────────
 export function saveAvatarLocally(base64Image) {
   try {
-    localStorage.setItem(AVATAR_KEY, base64Image)
+    store.setItem(AVATAR_KEY, base64Image)
   } catch (e) {
     // localStorage full — compress or skip
     console.warn('localStorage full, avatar not cached locally')
@@ -23,7 +24,7 @@ export function saveAvatarLocally(base64Image) {
 // ── Load avatar from localStorage ────────────────────────────
 export function loadLocalAvatar() {
   try {
-    return localStorage.getItem(AVATAR_KEY) || null
+    return store.getItem(AVATAR_KEY) || null
   } catch {
     return null
   }
@@ -32,7 +33,7 @@ export function loadLocalAvatar() {
 // ── Load avatar URL (from Supabase) ──────────────────────────
 export function loadAvatarUrl() {
   try {
-    return localStorage.getItem(AVATAR_URL_KEY) || null
+    return store.getItem(AVATAR_URL_KEY) || null
   } catch {
     return null
   }
@@ -57,7 +58,7 @@ export async function uploadAvatarToSupabase(file, userId) {
       .getPublicUrl(path)
 
     const publicUrl = data.publicUrl
-    localStorage.setItem(AVATAR_URL_KEY, publicUrl)
+    store.setItem(AVATAR_URL_KEY, publicUrl)
     return publicUrl
   } catch (err) {
     console.error('Avatar upload failed:', err)
@@ -77,7 +78,7 @@ export async function fetchAvatarFromSupabase(userId) {
         // Verify it exists with a HEAD request
         const res = await fetch(data.publicUrl, { method: 'HEAD' })
         if (res.ok) {
-          localStorage.setItem(AVATAR_URL_KEY, data.publicUrl)
+          store.setItem(AVATAR_URL_KEY, data.publicUrl)
           return data.publicUrl
         }
       }
@@ -90,6 +91,6 @@ export async function fetchAvatarFromSupabase(userId) {
 
 // ── Clear avatar (on sign out) ────────────────────────────────
 export function clearAvatar() {
-  localStorage.removeItem(AVATAR_KEY)
-  localStorage.removeItem(AVATAR_URL_KEY)
+  store.removeItem(AVATAR_KEY)
+  store.removeItem(AVATAR_URL_KEY)
 }

@@ -4,6 +4,7 @@
 // Maintenance interval tracking + IRS tax vault export.
 // ============================================================
 
+import { store } from './userStorage'
 import { getShiftHistory } from './shiftService'
 
 const VEHICLE_KEY = 'copilot_vehicle'
@@ -27,12 +28,12 @@ export const VEHICLE_PRESETS = [
 ]
 
 export function saveVehicle(vehicle) {
-  localStorage.setItem(VEHICLE_KEY, JSON.stringify(vehicle))
+  store.setItem(VEHICLE_KEY, JSON.stringify(vehicle))
 }
 
 export function loadVehicle() {
   try {
-    const raw = localStorage.getItem(VEHICLE_KEY)
+    const raw = store.getItem(VEHICLE_KEY)
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }
@@ -70,14 +71,14 @@ export const MAINTENANCE_ITEMS = [
 
 export function loadMaintenance() {
   try {
-    return JSON.parse(localStorage.getItem(MAINT_KEY) || '{}')
+    return JSON.parse(store.getItem(MAINT_KEY) || '{}')
   } catch { return {} }
 }
 
 export function markMaintenanceDone(itemId, atMiles) {
   const m = loadMaintenance()
   m[itemId] = { doneAtMiles: atMiles, doneAt: new Date().toISOString() }
-  localStorage.setItem(MAINT_KEY, JSON.stringify(m))
+  store.setItem(MAINT_KEY, JSON.stringify(m))
   return m
 }
 

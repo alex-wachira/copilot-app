@@ -29,11 +29,12 @@ const menuItems = [
   { icon: 'chart-bar', label: 'Shift planner', sub: '7-day AI schedule + tip estimator', tab: 'planner' },
 ]
 
-export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOut, onTabChange }) {
+export default function ProfileScreen({ driver, avatar, onAvatarChange, onDriverUpdate, onSignOut, onTabChange }) {
   const [showPro, setShowPro]       = useState(false)
   const [editGoal, setEditGoal]     = useState(false)
   const [weeklyGoal, setWeeklyGoal] = useState(driver?.weeklyGoal || 1000)
-  const [city, setCity]             = useState(() => loadCity()?.label || driver?.city || 'Chicago')
+  const [city, setCity]             = useState(() => driver?.city || loadCity()?.label || 'Chicago')
+  const [saveNote, setSaveNote]     = useState('')
   const [citySearch, setCitySearch] = useState('')
   const [cityResults, setCityRes]   = useState([])
   const [editCity, setEditCity]     = useState(false)
@@ -45,9 +46,22 @@ export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOu
     else setCityRes([])
   }
 
+  // Show a small "Saved ✓" / error note after each database save
+  const save = async (changes) => {
+    const res = await onDriverUpdate?.(changes)
+    setSaveNote(res?.ok === false ? 'Could not save — try again' : 'Saved ✓')
+    setTimeout(() => setSaveNote(''), 2500)
+  }
+
+  const toggleGoalEdit = () => {
+    if (editGoal && weeklyGoal !== driver?.weeklyGoal) save({ weeklyGoal })
+    setEditGoal(p => !p)
+  }
+
   const selectCity = (c) => {
     saveCity(c)
     setCity(c.label)
+    save({ city: c.label })
     setEditCity(false)
     setCitySearch('')
     setCityRes([])
@@ -174,8 +188,8 @@ export default function ProfileScreen({ driver, avatar, onAvatarChange, onSignOu
               <div style={{ fontSize:13, fontWeight:500 }}>Weekly goal</div>
               <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>${weeklyGoal.toLocaleString()} / week</div>
             </div>
-            <button onClick={()=>setEditGoal(p=>!p)} style={{ fontSize:12, color:'var(--teal)', background:'none', border:'1px solid var(--teal-light)', borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:500 }}>
-              {editGoal?'Save':'Edit'}
+            <button onClick={toggleGoalEdit} style={{ fontSize:12, color:'var(--teal)', background:'none', border:'1px solid var(--teal-light)', borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:500 }}>
+              {editGoal?'Save':(saveNote||'Edit')}
             </button>
           </div>
           {editGoal&&(
