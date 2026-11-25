@@ -1,67 +1,68 @@
 // ============================================================
-// Map Screen — real interactive Leaflet map
-// Surge zones as geo-accurate colored circles, delivery hot
-// zones as markers, live GPS user dot. Tap zones for details.
+// Map Screen — real places for the driver's chosen city
+// • Surge zones: live driver-reported surges (real multipliers)
+//   + demand zones from real places (airport, downtown, bars,
+//   campuses, hospitals) rated by time of day
+// • Hot zones: real restaurant clusters for delivery drivers
+// • Events: real big venues in the city + "see what's on" links
+// Data: OpenStreetMap (free) via placesService. No fake numbers.
 // ============================================================
 
 import { useState, useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { PLATFORMS } from '../lib/platforms'
-import { Card, SectionLabel, Badge, IconBox } from '../components/UI'
-import { mockEvents } from '../lib/mockData'
+import { Card, SectionLabel } from '../components/UI'
 import { loadCity } from '../lib/cityService'
-
-const CITY_COORDS = {
-  'Chicago':      { lat: 41.8781, lng: -87.6298 },
-  'New York':     { lat: 40.7128, lng: -74.0060 },
-  'Los Angeles':  { lat: 34.0522, lng: -118.2437 },
-  'Houston':      { lat: 29.7604, lng: -95.3698 },
-  'Phoenix':      { lat: 33.4484, lng: -112.0740 },
-}
-
-// Geo-accurate zones per city (offsets applied to city center for non-Chicago)
-const SURGE_ZONES = [
-  { name:'Downtown Core',   dLat: 0.0056,  dLng: 0.0009,  radius: 1400, mult: 2.1, color:'#E24B4A', ends:'~10:45am' },
-  { name:'River North',     dLat: 0.0143,  dLng: -0.0043, radius: 1000, mult: 1.6, color:'#EF9F27', ends:'Building now' },
-  { name:'Airport zone',    dLat: -0.0913, dLng: -0.1224, radius: 1800, mult: 1.3, color:'#1D9E75', ends:'Steady demand' },
-]
-
-const HOT_ZONES = [
-  { name:'Wicker Park',  dLat: 0.0307,  dLng: -0.0498, wait: 4, earning:'$24/hr', platforms:['doordash'], peak:true },
-  { name:'Lincoln Park', dLat: 0.0433,  dLng: -0.0215, wait: 7, earning:'$18/hr', platforms:['doordash','ubereats'] },
-  { name:'The Loop',     dLat: 0.0019,  dLng: -0.0021, wait: 9, earning:'$19/hr', platforms:['ubereats','grubhub'] },
-  { name:'West Loop',    dLat: 0.0037,  dLng: -0.0187, wait: 6, earning:'$21/hr', platforms:['doordash','ubereats','grubhub'] },
-]
+import { resolveCityCenter, loadCityPlaces, buildDemandZones, buildHotZones, DEMAND_STYLE } from '../lib/placesService'
 
 const filters = ['Surge zones', 'Hot zones', 'Events']
 
-export default function MapScreen({ driver }) {
+const VENUE_LABEL = {
+  stadium: 'Stadium', theatre: 'Theatre', events_venue: 'Event venue',
+  arts_centre: 'Arts centre', conference_centre: 'Convention centre', concert_hall: 'Concert hall',
+}
+
+export default function MapScreen({ driver, surge }) {
   const [activeFilter, setActiveFilter] = useState('Surge zones')
   const [userLocation, setUserLocation] = useState(null)
   const [selectedZone, setSelectedZone] = useState(null)
-  const mapRef = useRef(null)
+  const [center, setCenter]             = useState(null)
+  const [places, setPlaces]             = useState(null)
+  const [loadError, setLoadError]       = useState('')
+  const mapRef      = useRef(null)
   const mapInstance = useRef(null)
-  const layersRef = useRef([])
+  const layersRef   = useRef([])
   const driverPlatforms = driver?.platforms || ['uber']
   const hasDelivery = driverPlatforms.some(id => PLATFORMS[id]?.type === 'delivery')
-  const savedCity = loadCity()
-  const city = savedCity?.label || driver?.city || 'Chicago'
-  const center = savedCity ? { lat: savedCity.lat, lng: savedCity.lng } : (CITY_COORDS[driver?.city] || CITY_COORDS['Chicago'])
+  const city = center?.label || driver?.city || '…'
 
-  // Init map once
+  // 1. Work out where the city is, then fetch its real places
   useEffect(() => {
-    if (mapInstance.current || !mapRef.current) return
+    let alive = true
+    ;(async () => {
+      const c = await resolveCityCenter(loadCity(), driver?.city)
+      if (!alive) return
+      setCenter(c)
+      try {
+        const p = await loadCityPlaces(c)
+        if (alive) setPlaces(p)
+      } catch (e) {
+        if (alive) setLoadError(e.message || 'Could not load map data')
+      }
+    })()
+    return () => { alive = false }
+  }, [driver?.city])
+
+  // 2. Create the map once we know the centre
+  useEffect(() => {
+    if (!center || mapInstance.current || !mapRef.current) return
     const map = L.map(mapRef.current, { zoomControl: false, attributionControl: false })
       .setView([center.lat, center.lng], 12)
-    // Dark-friendly CARTO tiles (free, no key)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-    }).addTo(map)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     mapInstance.current = map
 
-    // Live GPS
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }
@@ -75,53 +76,76 @@ export default function MapScreen({ driver }) {
       }, () => {}, { timeout: 8000 })
     }
     return () => { map.remove(); mapInstance.current = null }
-  }, [])
+  }, [center])
 
-  // Draw layers when filter changes
+  const reported   = surge?.liveZones || []
+  const demandZones = places ? buildDemandZones(places) : []
+  const hotZones    = places ? buildHotZones(places) : []
+  const venues      = places?.venues || []
+
+  // 3. Draw the layer for the chosen tab
   useEffect(() => {
     const map = mapInstance.current
-    if (!map) return
-    // Clear old layers
+    if (!map || !places) return
     layersRef.current.forEach(l => map.removeLayer(l))
     layersRef.current = []
     setSelectedZone(null)
 
+    const pill = (lat, lng, html, w, onClick) => {
+      const m = L.marker([lat, lng], { icon: L.divIcon({ className:'', html, iconSize:[w,22], iconAnchor:[w/2,11] }) }).addTo(map)
+      if (onClick) m.on('click', onClick)
+      layersRef.current.push(m)
+    }
+    const pts = []
+
     if (activeFilter === 'Surge zones') {
-      SURGE_ZONES.forEach(z => {
-        const lat = center.lat + z.dLat, lng = center.lng + z.dLng
-        const circle = L.circle([lat, lng], {
-          radius: z.radius, color: z.color, weight: 2,
-          fillColor: z.color, fillOpacity: 0.22,
-        }).addTo(map)
-        const label = L.marker([lat, lng], {
-          icon: L.divIcon({ className:'', html:`<div style="background:${z.color};color:#fff;font-weight:700;font-size:12px;padding:3px 9px;border-radius:14px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif">${z.mult}x</div>`, iconSize:[44,22], iconAnchor:[22,11] })
-        }).addTo(map)
-        circle.on('click', () => setSelectedZone({ ...z, type:'surge' }))
-        label.on('click', () => setSelectedZone({ ...z, type:'surge' }))
-        layersRef.current.push(circle, label)
+      demandZones.forEach(z => {
+        const color = DEMAND_STYLE[z.level].color
+        const circle = L.circle([z.lat, z.lng], { radius: z.radius, color, weight: 2, fillColor: color, fillOpacity: 0.18 }).addTo(map)
+        circle.on('click', () => setSelectedZone({ ...z, kind:'demand' }))
+        layersRef.current.push(circle)
+        pts.push([z.lat, z.lng])
       })
-      map.setView([center.lat, center.lng], 12)
+      reported.forEach(r => {
+        pill(r.lat, r.lng, `<div style="background:#E24B4A;color:#fff;font-weight:700;font-size:12px;padding:3px 9px;border-radius:14px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif">${r.multiplier}x</div>`, 44,
+          () => setSelectedZone({ name: r.neighborhood || 'Driver report', lat: r.lat, lng: r.lng, kind:'reported', r }))
+        pts.push([r.lat, r.lng])
+      })
     }
 
     if (activeFilter === 'Hot zones' && hasDelivery) {
-      HOT_ZONES.forEach(z => {
-        const lat = center.lat + z.dLat, lng = center.lng + z.dLng
-        const pin = L.marker([lat, lng], {
-          icon: L.divIcon({ className:'', html:`<div style="background:${z.peak?'#FF3008':'#1D9E75'};color:#fff;font-weight:600;font-size:11px;padding:4px 10px;border-radius:14px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif">🍔 ${z.name} · ${z.earning}</div>`, iconSize:[120,24], iconAnchor:[60,12] })
-        }).addTo(map)
-        pin.on('click', () => setSelectedZone({ ...z, type:'hot' }))
-        layersRef.current.push(pin)
+      hotZones.forEach(z => {
+        const color = DEMAND_STYLE[z.level].color
+        pill(z.lat, z.lng, `<div style="background:${color};color:#fff;font-weight:600;font-size:11px;padding:4px 10px;border-radius:14px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif">🍔 ${z.name}</div>`, 120,
+          () => setSelectedZone({ ...z, kind:'food' }))
+        pts.push([z.lat, z.lng])
       })
-      map.setView([center.lat + 0.02, center.lng - 0.02], 12)
     }
-  }, [activeFilter, hasDelivery])
+
+    if (activeFilter === 'Events') {
+      venues.forEach(v => {
+        pill(v.lat, v.lng, `<div style="background:#141414;color:#EF9F27;font-weight:600;font-size:11px;padding:4px 10px;border-radius:14px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif">🎟 ${v.name}</div>`, 120,
+          () => setSelectedZone({ ...v, kind:'venue', why: VENUE_LABEL[v.kind] || 'Venue' }))
+        pts.push([v.lat, v.lng])
+      })
+    }
+
+    // Fit the map to what's shown (but don't zoom out to the airport 30 miles away)
+    const near = pts.filter(([la, ln]) => Math.abs(la - center.lat) < 0.2 && Math.abs(ln - center.lng) < 0.25)
+    if (near.length > 1) map.fitBounds(near, { padding: [30, 30], maxZoom: 14 })
+    else map.setView([center.lat, center.lng], 12)
+  }, [activeFilter, hasDelivery, places, reported.length])
+
+  const detailLine = (z) => {
+    if (z.kind === 'reported') return `${z.r.multiplier}x reported by ${z.r.reportCount} driver${z.r.reportCount>1?'s':''} · ${z.r.minutesAgo} min ago`
+    if (z.kind === 'venue') return `${z.why} · check tonight's schedule`
+    return `${DEMAND_STYLE[z.level].label} now · ${z.why}`
+  }
 
   return (
     <div className="screen">
-      {/* Interactive map */}
       <div style={{ position:'relative', height:300 }}>
-        <div ref={mapRef} style={{ height:'100%', width:'100%', zIndex:1 }}/>
-        {/* Filter chips */}
+        <div ref={mapRef} style={{ height:'100%', width:'100%', zIndex:1, background:'var(--gray-50)' }}/>
         <div style={{ position:'absolute', top:10, left:10, right:10, display:'flex', gap:7, zIndex:500 }}>
           {filters.filter(f => f !== 'Hot zones' || hasDelivery).map(f => (
             <button key={f} onClick={() => setActiveFilter(f)} style={{ fontSize:12, fontWeight:600, padding:'6px 13px', borderRadius:20, border:'none', cursor:'pointer', background: activeFilter===f?'#141414':'rgba(255,255,255,0.92)', color: activeFilter===f?'#EF9F27':'#444', boxShadow:'0 2px 8px rgba(0,0,0,0.15)', transition:'all 0.15s' }}>
@@ -129,95 +153,103 @@ export default function MapScreen({ driver }) {
             </button>
           ))}
         </div>
-        {/* GPS status */}
         <div style={{ position:'absolute', bottom:10, left:10, zIndex:500, background:'rgba(20,20,20,0.85)', borderRadius:20, padding:'4px 11px', fontSize:11, color: userLocation?'#4CC39A':'rgba(255,255,255,0.6)', display:'flex', alignItems:'center', gap:5 }}>
           <div style={{ width:6, height:6, borderRadius:'50%', background: userLocation?'#1D9E75':'rgba(255,255,255,0.35)' }}/>
           {userLocation ? 'Live GPS' : city}
         </div>
+        {!places && !loadError && (
+          <div style={{ position:'absolute', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, color:'var(--text-muted)', pointerEvents:'none' }}>
+            Finding demand spots in {city}…
+          </div>
+        )}
       </div>
 
-      {/* Selected zone detail */}
       {selectedZone && (
-        <div style={{ margin:'10px 16px 0', background: selectedZone.type==='surge'?'var(--amber-light)':'var(--teal-light)', border:`1.5px solid ${selectedZone.type==='surge'?'var(--amber)':'var(--teal)'}`, borderRadius:14, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ margin:'10px 16px 0', background:'var(--amber-light)', border:'1.5px solid var(--amber)', borderRadius:14, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:14, fontWeight:600 }}>{selectedZone.name}</div>
-            <div style={{ fontSize:12, color:'var(--text-secondary)', marginTop:2 }}>
-              {selectedZone.type==='surge'
-                ? `${selectedZone.mult}x surge · ${selectedZone.ends}`
-                : `${selectedZone.earning} avg · ${selectedZone.wait}min avg wait · ${selectedZone.platforms.map(p=>PLATFORMS[p]?.name).join(', ')}`
-              }
-            </div>
+            <div style={{ fontSize:12, color:'var(--text-secondary)', marginTop:2 }}>{detailLine(selectedZone)}</div>
           </div>
-          <a href={`https://www.google.com/maps/dir/?api=1&destination=${center.lat + (selectedZone.dLat||0)},${center.lng + (selectedZone.dLng||0)}`} target="_blank" rel="noreferrer" style={{ background:'#141414', color:'#fff', fontSize:12, fontWeight:600, padding:'8px 14px', borderRadius:10, textDecoration:'none', flexShrink:0 }}>
+          <a href={`https://www.google.com/maps/dir/?api=1&destination=${selectedZone.lat},${selectedZone.lng}`} target="_blank" rel="noreferrer" style={{ background:'#141414', color:'#fff', fontSize:12, fontWeight:600, padding:'8px 14px', borderRadius:10, textDecoration:'none', flexShrink:0 }}>
             Navigate →
           </a>
         </div>
       )}
 
       <div style={{ padding:'0 16px' }}>
-        {activeFilter === 'Surge zones' && <>
-          <SectionLabel>Live surge zones · {city}</SectionLabel>
+        {loadError && (
+          <Card style={{ margin:'12px 0', fontSize:13, color:'var(--coral)' }}>{loadError}</Card>
+        )}
+
+        {activeFilter === 'Surge zones' && places && <>
+          {reported.length > 0 && <>
+            <SectionLabel>Surge reported by drivers · last 20 min</SectionLabel>
+            <Card style={{ padding:0, overflow:'hidden', marginBottom:10 }}>
+              {reported.map((r,i) => (
+                <Row key={i} last={i===reported.length-1} dot="#E24B4A" title={r.neighborhood || 'Driver report'}
+                  sub={`${r.reportCount} report${r.reportCount>1?'s':''} · ${r.minutesAgo} min ago`}
+                  right={<span style={{ fontSize:15, fontWeight:600, color:'#E24B4A' }}>{r.multiplier}x</span>}
+                  onClick={()=>setSelectedZone({ name:r.neighborhood||'Driver report', lat:r.lat, lng:r.lng, kind:'reported', r })}/>
+              ))}
+            </Card>
+          </>}
+          <SectionLabel>Expected demand right now · {city}</SectionLabel>
           <Card style={{ padding:0, overflow:'hidden', marginBottom:10 }}>
-            {SURGE_ZONES.map((z,i) => (
-              <div key={z.name} onClick={()=>setSelectedZone({...z, type:'surge'})} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: i<SURGE_ZONES.length-1?'1px solid var(--border)':'none', cursor:'pointer' }}>
-                <div style={{ width:10, height:10, borderRadius:'50%', background:z.color, flexShrink:0 }}/>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:500 }}>{z.name}</div>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>{z.ends}</div>
-                </div>
-                <div style={{ fontSize:15, fontWeight:600, color:z.color }}>{z.mult}x</div>
-              </div>
+            {demandZones.map((z,i) => (
+              <Row key={z.name+i} last={i===demandZones.length-1} dot={DEMAND_STYLE[z.level].color} title={z.name} sub={z.why}
+                right={<LevelTag level={z.level}/>} onClick={()=>setSelectedZone({ ...z, kind:'demand' })}/>
             ))}
           </Card>
-          <div style={{ fontSize:11, color:'var(--text-muted)', textAlign:'center', marginBottom:12 }}>
-            Tap a zone on the map or list for details + navigation
-          </div>
+          <Note>Demand is estimated from the time of day and what's in each area. Real surge multipliers appear when drivers report them.</Note>
         </>}
 
-        {activeFilter === 'Hot zones' && hasDelivery && <>
-          <SectionLabel>Delivery hot zones · {city}</SectionLabel>
+        {activeFilter === 'Hot zones' && hasDelivery && places && <>
+          <SectionLabel>Restaurant clusters · {city}</SectionLabel>
           <Card style={{ padding:0, overflow:'hidden', marginBottom:10 }}>
-            {HOT_ZONES.map((z,i) => (
-              <div key={z.name} onClick={()=>setSelectedZone({...z, type:'hot'})} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: i<HOT_ZONES.length-1?'1px solid var(--border)':'none', cursor:'pointer' }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
-                    <span style={{ fontSize:13, fontWeight:500 }}>{z.name}</span>
-                    {z.peak && <span style={{ fontSize:10, color:'#fff', background:'#FF3008', padding:'1px 7px', borderRadius:20, fontWeight:600 }}>Peak Pay</span>}
-                  </div>
-                  <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                    {z.platforms.filter(id=>driverPlatforms.includes(id)).map(id => (
-                      <span key={id} style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'var(--gray-50)', color:'var(--text-muted)', fontWeight:500 }}>{PLATFORMS[id]?.name}</span>
-                    ))}
-                    <span style={{ fontSize:11, color:'var(--text-muted)' }}>· {z.wait}min avg wait</span>
-                  </div>
-                </div>
-                <div style={{ fontSize:13, fontWeight:600, color:'var(--teal)' }}>{z.earning}</div>
-              </div>
+            {hotZones.length === 0 && <div style={{ padding:'12px 14px', fontSize:13, color:'var(--text-muted)' }}>No big restaurant clusters found nearby.</div>}
+            {hotZones.map((z,i) => (
+              <Row key={i} last={i===hotZones.length-1} dot={DEMAND_STYLE[z.level].color} title={z.name} sub={z.why}
+                right={<LevelTag level={z.level}/>} onClick={()=>setSelectedZone({ ...z, kind:'food' })}/>
             ))}
           </Card>
+          <Note>Busiest for delivery: lunch 11am–2pm and dinner 5–9pm.</Note>
         </>}
 
-        {activeFilter === 'Events' && <>
-          <SectionLabel>Events driving demand</SectionLabel>
-          <Card style={{ padding:0, overflow:'hidden', marginBottom:12 }}>
-            {mockEvents.map((ev,i) => (
-              <div key={ev.title} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: i<mockEvents.length-1?'1px solid var(--border)':'none' }}>
-                <IconBox color={ev.color}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    {ev.icon==='music'&&<><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></>}
-                    {ev.icon==='trophy'&&<><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></>}
-                  </svg>
-                </IconBox>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:500 }}>{ev.title}</div>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>{ev.sub}</div>
-                </div>
-                <Badge color={ev.color}>{ev.badge}</Badge>
-              </div>
+        {activeFilter === 'Events' && places && <>
+          <SectionLabel>Big venues · {city}</SectionLabel>
+          <Card style={{ padding:0, overflow:'hidden', marginBottom:10 }}>
+            {venues.length === 0 && <div style={{ padding:'12px 14px', fontSize:13, color:'var(--text-muted)' }}>No large venues found nearby.</div>}
+            {venues.map((v,i) => (
+              <Row key={v.name} last={i===venues.length-1} dot="#141414" title={v.name} sub={VENUE_LABEL[v.kind] || 'Venue'}
+                right={<a href={`https://www.google.com/search?q=${encodeURIComponent(v.name + ' ' + city.split(',')[0] + ' events today')}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ fontSize:12, fontWeight:600, color:'var(--teal)', textDecoration:'none' }}>What's on →</a>}
+                onClick={()=>setSelectedZone({ ...v, kind:'venue', why: VENUE_LABEL[v.kind] || 'Venue' })}/>
             ))}
           </Card>
+          <Note>When a show or game lets out, ride demand spikes nearby for 30–60 minutes.</Note>
         </>}
       </div>
     </div>
   )
+}
+
+function Row({ title, sub, dot, right, onClick, last }) {
+  return (
+    <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: last?'none':'1px solid var(--border)', cursor:'pointer' }}>
+      <div style={{ width:10, height:10, borderRadius:'50%', background:dot, flexShrink:0 }}/>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:13, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{title}</div>
+        <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>{sub}</div>
+      </div>
+      {right}
+    </div>
+  )
+}
+
+function LevelTag({ level }) {
+  const s = DEMAND_STYLE[level]
+  return <span style={{ fontSize:11, fontWeight:600, color:s.color, whiteSpace:'nowrap' }}>{s.label}</span>
+}
+
+function Note({ children }) {
+  return <div style={{ fontSize:11, color:'var(--text-muted)', textAlign:'center', margin:'0 8px 14px', lineHeight:1.5 }}>{children}</div>
 }
