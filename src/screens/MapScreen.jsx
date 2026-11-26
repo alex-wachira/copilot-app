@@ -57,9 +57,14 @@ export default function MapScreen({ driver, surge }) {
   // 2. Create the map once we know the centre
   useEffect(() => {
     if (!center || mapInstance.current || !mapRef.current) return
-    const map = L.map(mapRef.current, { zoomControl: false, attributionControl: false })
+    const map = L.map(mapRef.current, { zoomControl: false })
       .setView([center.lat, center.lng], 12)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map)
+    map.attributionControl.setPrefix(false)
+    // OpenStreetMap street map — free, no key (credit line required by their rules)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap',
+    }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     mapInstance.current = map
 

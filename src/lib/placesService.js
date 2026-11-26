@@ -77,7 +77,10 @@ function groupPlaces(elements, center) {
     const p = { ...pos(el), name: t.name }
     if (p.lat == null) continue
     if (t.aeroway === 'aerodrome') airports.push(p)
-    else if (t.amenity === 'university') universities.push(p)
+    else if (t.amenity === 'university') {
+      // Skip campus offices/buildings tagged as "university" (e.g. "Fleet Services")
+      if (/universit|college|campus|institute|academy|school/i.test(t.name || '')) universities.push(p)
+    }
     else if (t.leisure === 'stadium' || /^(theatre|events_venue|arts_centre|conference_centre|concert_hall)$/.test(t.amenity || '')) venues.push({ ...p, kind: t.leisure === 'stadium' ? 'stadium' : t.amenity })
     else if (t.amenity === 'hospital') hospitals.push(p)
     else if (t.place) hoods.push(p)
