@@ -44,7 +44,7 @@ export async function loadCityPlaces(center) {
 
   const a = `(around:${RADIUS},${center.lat},${center.lng})`
   const query = `[out:json][timeout:25];
-nwr["aeroway"="aerodrome"]["iata"](around:45000,${center.lat},${center.lng});out center 3;
+nwr["aeroway"="aerodrome"]["iata"]["aerodrome:type"!~"military"]["military"!~"."](around:45000,${center.lat},${center.lng});out center 5;
 nwr["amenity"="university"]["name"]${a};out center 12;
 (nwr["leisure"="stadium"]["name"]${a};nwr["amenity"~"^(theatre|events_venue|arts_centre|conference_centre|concert_hall)$"]["name"]${a};);out center 40;
 nwr["amenity"="hospital"]["name"]${a};out center 12;
@@ -76,7 +76,10 @@ function groupPlaces(elements, center) {
     const t = el.tags || {}
     const p = { ...pos(el), name: t.name }
     if (p.lat == null) continue
-    if (t.aeroway === 'aerodrome') airports.push(p)
+    if (t.aeroway === 'aerodrome') {
+      // Passenger airports only — skip army/air-force fields
+      if (!/army|air force|military|national guard|air base|\bAFB\b|fort /i.test(t.name || '')) airports.push(p)
+    }
     else if (t.amenity === 'university') {
       // Skip campus offices/buildings tagged as "university" (e.g. "Fleet Services")
       if (/universit|college|campus|institute|academy|school/i.test(t.name || '')) universities.push(p)
