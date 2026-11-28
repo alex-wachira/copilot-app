@@ -89,8 +89,8 @@ export function computeShiftStats(shift) {
   const totalMiles    = shift.trips.reduce((s, t) => s + t.miles, 0)
   const totalExpenses = shift.expenses.reduce((s, e) => s + e.amount, 0)
 
-  // IRS mileage-based vehicle cost estimate ($0.67/mi covers gas + wear)
-  const vehicleCost = totalMiles * 0.67
+  // IRS mileage-based vehicle cost estimate ($0.725/mi covers gas + wear)
+  const vehicleCost = totalMiles * 0.725
   const netEarnings = grossEarnings - totalExpenses
 
   return {

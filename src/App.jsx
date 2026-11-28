@@ -21,7 +21,7 @@ import { supabase } from './lib/supabase'
 import BottomNav from './components/BottomNav'
 import SurgeReportPrompt from './components/SurgeReportPrompt'
 import { useSurge } from './lib/useSurge'
-import { mockNotifications } from './lib/notifications'
+import { buildNotifications } from './lib/realNotifications'
 import { loadLocalAvatar, loadAvatarUrl, saveAvatarLocally, clearAvatar, uploadAvatarToSupabase } from './lib/avatarService'
 import { checkUpgradeReturn, syncPlanFromSupabase } from './lib/proService'
 import { loadCity } from './lib/cityService'
@@ -90,7 +90,9 @@ export default function App() {
     lng:      savedCity?.lng ?? -87.6298,
   })
 
-  const unreadNotifs = mockNotifications.filter(n => !n.read).length
+  const [notifTick, setNotifTick] = useState(0)
+  const unreadNotifs = driver ? buildNotifications(driver).filter(n => !n.read).length : 0
+  void notifTick  // re-count after reading
 
   const handleAvatarChange = async (file, base64) => {
     setAvatar(base64)
@@ -145,7 +147,7 @@ export default function App() {
     board:     <LeaderboardScreen driver={driver} />,
     earnings:  <EarningsScreen driver={driver} />,
     taxes:     <TaxesScreen />,
-    notifs:    <NotificationsScreen />,
+    notifs:    <NotificationsScreen driver={driver} onTabChange={setTab} onRead={() => setNotifTick(t => t + 1)} />,
     privacy:   <PrivacyScreen driver={driver} onSignOut={handleSignOut} onBack={() => setTab('more')} />,
     vehicle:   <VehicleScreen onBack={() => setTab('more')} />,
     oracle:    <OracleScreen driver={driver} onBack={() => setTab('more')} />,

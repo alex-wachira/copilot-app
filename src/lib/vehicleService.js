@@ -110,11 +110,11 @@ export function getMaintenanceStatus() {
 // ── Tax vault: IRS-ready CSV export ──────────────────────────
 export function exportTaxCSV() {
   const history = getShiftHistory()
-  const rows = [['Date','Type','Platform','Description','Miles','Amount ($)','Mileage Deduction ($0.67/mi)']]
+  const rows = [['Date','Type','Platform','Description','Miles','Amount ($)','Mileage Deduction ($0.725/mi)']]
   history.forEach(s => {
     const date = new Date(s.startTime).toLocaleDateString('en-US')
     s.trips.forEach(t => {
-      rows.push([date,'Income',t.platform,'Trip earnings',t.miles,(t.payout+t.tip).toFixed(2),(t.miles*0.67).toFixed(2)])
+      rows.push([date,'Income',t.platform,'Trip earnings',t.miles,(t.payout+t.tip).toFixed(2),(t.miles*0.725).toFixed(2)])
     })
     s.expenses.forEach(e => {
       rows.push([date,'Expense','-',e.category,'',(-e.amount).toFixed(2),''])
@@ -122,7 +122,7 @@ export function exportTaxCSV() {
   })
   const totalMiles = getTotalTrackedMiles()
   rows.push([])
-  rows.push(['TOTALS','','','',totalMiles,'',(totalMiles*0.67).toFixed(2)])
+  rows.push(['TOTALS','','','',totalMiles,'',(totalMiles*0.725).toFixed(2)])
   const csv = rows.map(r => r.join(',')).join('\n')
   const blob = new Blob([csv], { type:'text/csv' })
   const url = URL.createObjectURL(blob)

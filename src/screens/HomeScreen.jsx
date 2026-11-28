@@ -1,25 +1,36 @@
 import { useState } from 'react'
-import { PLATFORMS, PLATFORM_EARNINGS, OPTIMIZATION_SIGNALS } from '../lib/platforms'
-import { mockGoal } from '../lib/mockData'
+import { PLATFORMS } from '../lib/platforms'
 import { Card, SectionLabel, AINudge, ProgressBar } from '../components/UI'
 import { getActiveShift, computeShiftStats } from '../lib/shiftService'
+import { periodStats, platformToday, streakDays, hoursOnlineToday, allTrips, hourLabel } from '../lib/realStats'
+import { demandNow } from '../lib/placesService'
 
 const levelColors = { low:'#E8E7E3', med:'rgba(29,158,117,0.3)', high:'#1D9E75', peak:'#EF9F27' }
 const levelLabels = { low:'Slow', med:'Fair', high:'Good', peak:'Peak' }
-const mockHours = [
-  { l:'6a',  hr:6,  v:'low',  earn:14, why:'Early morning — light demand, mostly airport runs' },
-  { l:'7',   hr:7,  v:'med',  earn:19, why:'Commute starting — office workers heading downtown' },
-  { l:'8',   hr:8,  v:'high', earn:25, why:'Morning rush peak — strong ride demand citywide' },
-  { l:'9',   hr:9,  v:'peak', earn:31, why:'Peak commute + airport surge. Best morning window' },
-  { l:'10',  hr:10, v:'high', earn:24, why:'Rush tapering but airport demand stays strong' },
-  { l:'11',  hr:11, v:'med',  earn:18, why:'Mid-morning lull — early lunch orders starting' },
-  { l:'12p', hr:12, v:'low',  earn:15, why:'Lunch is delivery-heavy; rides slow down' },
-  { l:'1',   hr:13, v:'low',  earn:14, why:'Post-lunch dip — slowest stretch of the day' },
-  { l:'4',   hr:16, v:'med',  earn:20, why:'Evening commute building — position downtown' },
-  { l:'5',   hr:17, v:'peak', earn:33, why:'Evening rush peak — highest demand of the day' },
-  { l:'6',   hr:18, v:'high', earn:27, why:'Rush continues + dinner delivery orders spike' },
-  { l:'11p', hr:23, v:'med',  earn:21, why:'Bar traffic + concert at Chase Arena ends 11pm' },
-]
+const HOURS = [6,7,8,9,11,12,13,15,17,18,20,22]
+const TYPE_WHY = { downtown:'commuters', airport:'airport runs', nightlife:'bar & nightlife crowd', food:'meal-time delivery orders' }
+
+// Demand pattern by hour (same rules as the map) + the driver's OWN $/hr in that hour, if logged
+function buildHours(platforms) {
+  const ride = platforms.some(id => PLATFORMS[id]?.type === 'rideshare')
+  const food = platforms.some(id => PLATFORMS[id]?.type === 'delivery')
+  const types = [...(ride ? ['downtown','nightlife'] : []), ...(food ? ['food'] : [])]  // airport shown on the map instead
+  const trips = allTrips()
+  const now = new Date()
+  return HOURS.map(hr => {
+    const at = new Date(now); at.setHours(hr, 30, 0, 0)
+    if (hr < 4) at.setDate(at.getDate() + 1)
+    const levels = types.map(t => [t, demandNow(t, at)])
+    const highs = levels.filter(([,l]) => l === 'high').map(([t]) => t)
+    const v = highs.length >= 2 ? 'peak' : highs.length === 1 ? 'high' : levels.some(([,l]) => l === 'medium') ? 'med' : 'low'
+    const mine = trips.filter(t => t.at.getHours() === hr)
+    const myAvg = mine.length >= 3 ? Math.round(mine.reduce((s,t) => s + t.payout + t.tip, 0) / mine.length) : null
+    return {
+      l: hourLabel(hr).replace('am','a').replace('pm','p'), hr, v, myAvg,
+      why: highs.length ? `Usually busy: ${highs.map(t => TYPE_WHY[t]).join(' + ')}` : v === 'med' ? 'Steady, average demand for this time' : 'Typically one of the slower stretches',
+    }
+  })
+}
 
 function PlatformPill({ id, earnings, active, onClick }) {
   const p = PLATFORMS[id]
@@ -27,30 +38,9 @@ function PlatformPill({ id, earnings, active, onClick }) {
   return (
     <button onClick={() => onClick(id)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'10px 12px', borderRadius:12, cursor:'pointer', flexShrink:0, border: active?'2px solid #141414':'1px solid var(--border)', background: active?'#141414':'var(--surface)', minWidth:72, transition:'all 0.15s' }}>
       <div style={{ fontSize:12, fontWeight:700, color: active?'#fff':'var(--text-muted)' }}>{p.logo}</div>
-      <div style={{ fontSize:14, fontWeight:600, color: active?'#EF9F27':'var(--text-primary)' }}>${earnings?.today||0}</div>
+      <div style={{ fontSize:14, fontWeight:600, color: active?'#EF9F27':'var(--text-primary)' }}>${Math.round(earnings?.gross||0)}</div>
       <div style={{ fontSize:10, color: active?'rgba(255,255,255,0.5)':'var(--text-muted)' }}>today</div>
     </button>
-  )
-}
-
-function OptSignal({ signal }) {
-  const p = PLATFORMS[signal.platform]
-  const c = { amber:{bg:'var(--amber-light)',text:'var(--amber-dark)',dot:'#EF9F27'}, coral:{bg:'var(--coral-light)',text:'var(--coral-dark)',dot:'#D85A30'}, teal:{bg:'var(--teal-light)',text:'var(--teal-dark)',dot:'#1D9E75'}, green:{bg:'var(--green-light)',text:'var(--green-dark)',dot:'#639922'} }[signal.color]||{bg:'var(--teal-light)',text:'var(--teal-dark)',dot:'#1D9E75'}
-  return (
-    <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--border)' }}>
-      <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-        <div style={{ width:8, height:8, borderRadius:'50%', background:c.dot, flexShrink:0, marginTop:5 }}/>
-        <div style={{ flex:1 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
-            <span style={{ fontSize:13, fontWeight:600 }}>{signal.title}</span>
-            <span style={{ fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:20, background:c.bg, color:c.text }}>{p?.name}</span>
-          </div>
-          <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.5, marginBottom:4 }}>{signal.detail}</div>
-          <div style={{ fontSize:12, fontWeight:600, color:c.dot }}>{signal.earnDelta}</div>
-        </div>
-        {signal.validUntil && <div style={{ fontSize:10, color:'var(--text-muted)', flexShrink:0, background:'var(--gray-50)', padding:'2px 7px', borderRadius:20 }}>until {signal.validUntil}</div>}
-      </div>
-    </div>
   )
 }
 
@@ -60,21 +50,31 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
   const shiftStats = activeShift ? computeShiftStats(activeShift) : null
   const driverPlatforms = driver?.platforms || ['uber']
   const [activePlatform, setActivePlatform] = useState('all')
-  const totalToday = driverPlatforms.reduce((s,id) => s+(PLATFORM_EARNINGS[id]?.today||0), 0)
-  const totalWeek  = driverPlatforms.reduce((s,id) => s+(PLATFORM_EARNINGS[id]?.week||0), 0)
-  const goal = driver?.weeklyGoal || mockGoal.weekly
-  const pct  = Math.min(100, Math.round((totalWeek/goal)*100))
-  const remaining = goal - totalWeek
-  const visibleSignals = OPTIMIZATION_SIGNALS.filter(s => driverPlatforms.includes(s.platform) && (activePlatform==='all'||s.platform===activePlatform))
-  const apd = activePlatform !== 'all' ? PLATFORM_EARNINGS[activePlatform] : null
-  const displayPerHour = apd ? apd.perHour : (totalToday/3.5).toFixed(2)
+  const today    = periodStats('today')
+  const week     = periodStats('week')
+  const byApp    = platformToday(driverPlatforms)
+  const apd      = activePlatform !== 'all' ? byApp[activePlatform] : null
+  const weekApp  = activePlatform !== 'all' ? periodStats('week', activePlatform) : week
+  const goal     = driver?.weeklyGoal || 1000
+  const pct      = Math.min(100, Math.round((week.gross/goal)*100))
+  const remaining = Math.max(0, goal - week.gross)
+  const daysLeft = 7 - ((new Date().getDay() + 6) % 7)   // incl. today, week ends Sunday
+  const streak   = streakDays()
+  const onlineH  = hoursOnlineToday()
+  const hasData  = allTrips().length > 0
+  const hours    = buildHours(driverPlatforms)
+  const h = new Date().getHours()
+  const greeting = h < 12 ? 'good morning' : h < 17 ? 'good afternoon' : 'good evening'
+  const fmtH = (x) => `${Math.floor(x)}h ${Math.round((x % 1) * 60)}m`
+  const shown = apd || today
+  const weekByApp = driverPlatforms.map(id => ({ id, ...periodStats('week', id) })).filter(p => p.jobs > 0)
 
   return (
     <div className="screen" style={{ padding:'0 16px' }}>
       <div style={{ padding:'20px 0 4px' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
-            <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:2 }}>good morning</div>
+            <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:2 }}>{greeting}</div>
             <div style={{ fontSize:24, fontWeight:600, letterSpacing:'-0.3px' }}>{driver?.name||'Driver'} 👋</div>
           </div>
           {/* Avatar in header */}
@@ -86,9 +86,9 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:8 }}>
-          <div style={{ width:7, height:7, borderRadius:'50%', background:'var(--teal)' }}/>
-          <span style={{ fontSize:13, color:'var(--text-secondary)' }}>Online · 2h 14m today</span>
-          <div style={{ marginLeft:'auto', background:'rgba(239,159,39,0.15)', color:'var(--amber-dark)', fontSize:12, fontWeight:600, padding:'3px 10px', borderRadius:20, border:'1px solid rgba(239,159,39,0.3)' }}>🔥 5-day streak</div>
+          <div style={{ width:7, height:7, borderRadius:'50%', background: activeShift?'var(--teal)':'var(--text-muted)' }}/>
+          <span style={{ fontSize:13, color:'var(--text-secondary)' }}>{activeShift ? 'On shift' : 'Off shift'} · {fmtH(onlineH)} today</span>
+          {streak >= 2 && <div style={{ marginLeft:'auto', background:'rgba(239,159,39,0.15)', color:'var(--amber-dark)', fontSize:12, fontWeight:600, padding:'3px 10px', borderRadius:20, border:'1px solid rgba(239,159,39,0.3)' }}>🔥 {streak}-day streak</div>}
         </div>
       </div>
 
@@ -96,10 +96,10 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
         <div style={{ display:'flex', gap:8, overflowX:'auto', padding:'12px 0 4px', scrollbarWidth:'none' }}>
           <button onClick={() => setActivePlatform('all')} style={{ padding:'10px 14px', borderRadius:12, border: activePlatform==='all'?'2px solid #141414':'1px solid var(--border)', background: activePlatform==='all'?'#141414':'var(--surface)', cursor:'pointer', flexShrink:0 }}>
             <div style={{ fontSize:12, fontWeight:700, color: activePlatform==='all'?'#fff':'var(--text-muted)' }}>ALL</div>
-            <div style={{ fontSize:14, fontWeight:600, color: activePlatform==='all'?'#EF9F27':'var(--text-primary)' }}>${totalToday}</div>
+            <div style={{ fontSize:14, fontWeight:600, color: activePlatform==='all'?'#EF9F27':'var(--text-primary)' }}>${Math.round(today.gross)}</div>
             <div style={{ fontSize:10, color: activePlatform==='all'?'rgba(255,255,255,0.5)':'var(--text-muted)' }}>today</div>
           </button>
-          {driverPlatforms.map(id => <PlatformPill key={id} id={id} earnings={PLATFORM_EARNINGS[id]} active={activePlatform===id} onClick={setActivePlatform}/>)}
+          {driverPlatforms.map(id => <PlatformPill key={id} id={id} earnings={byApp[id]} active={activePlatform===id} onClick={setActivePlatform}/>)}
         </div>
       )}
 
@@ -120,25 +120,25 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
           <div>
             <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:2 }}>{activePlatform==='all'?'All platforms':PLATFORMS[activePlatform]?.name} · weekly goal</div>
-            <div style={{ fontSize:26, fontWeight:600, letterSpacing:'-0.5px' }}>${totalWeek.toLocaleString()} <span style={{ fontSize:15, fontWeight:400, color:'var(--text-muted)' }}>/ ${goal.toLocaleString()}</span></div>
+            <div style={{ fontSize:26, fontWeight:600, letterSpacing:'-0.5px' }}>${Math.round(weekApp.gross).toLocaleString()} <span style={{ fontSize:15, fontWeight:400, color:'var(--text-muted)' }}>/ ${goal.toLocaleString()}</span></div>
           </div>
           <div style={{ textAlign:'right' }}>
-            <div style={{ fontSize:11, color:'var(--text-muted)' }}>Fri in 3d</div>
+            <div style={{ fontSize:11, color:'var(--text-muted)' }}>{daysLeft} day{daysLeft>1?'s':''} left</div>
             <div style={{ fontSize:15, fontWeight:600, color:'var(--teal)', marginTop:2 }}>{pct}%</div>
           </div>
         </div>
         <ProgressBar pct={pct} color="linear-gradient(90deg, var(--teal), var(--amber))"/>
         <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text-muted)', marginTop:6 }}>
-          <span>${remaining.toLocaleString()} to go</span><span>~${Math.ceil(remaining/3)}/day needed</span>
+          <span>{remaining > 0 ? `$${Math.round(remaining).toLocaleString()} to go` : 'Goal reached 🎉'}</span>{remaining > 0 && <span>~${Math.ceil(remaining/daysLeft)}/day needed</span>}
         </div>
       </Card>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
         {[
-          { label:'Earnings/hr', value:`$${Number(displayPerHour).toFixed(2)}`, note:'↑ above avg', up:true },
-          { label:'Today total', value:`$${apd?apd.today:totalToday}`, note:`${apd?(apd.orders||apd.rides||0):driverPlatforms.reduce((s,id)=>s+(PLATFORM_EARNINGS[id]?.rides||PLATFORM_EARNINGS[id]?.orders||0),0)} jobs` },
+          { label:'Earnings/hr', value: shown.perHour!=null ? `$${shown.perHour.toFixed(2)}` : '—', note: shown.perHour!=null ? 'today, gross' : 'start a shift to see this' },
+          { label:'Today total', value:`$${shown.gross.toFixed(0)}`, note:`${shown.jobs} job${shown.jobs===1?'':'s'}` },
           { label:'Active apps', value:driverPlatforms.length, note:driverPlatforms.map(id=>PLATFORMS[id]?.name).join(', ') },
-          { label:'Dead miles', value:'12%', note:'↓ -4% this week', up:false },
+          { label:'Per mile', value: week.perMile!=null ? `$${week.perMile.toFixed(2)}` : '—', note: week.perMile!=null ? 'this week, gross' : 'log miles on trips' },
         ].map((s,i) => (
           <div key={i} style={{ background:'var(--surface)', borderRadius:'var(--radius-sm)', border:'1px solid var(--border)', padding:'10px 12px' }}>
             <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>{s.label}</div>
@@ -148,20 +148,35 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
         ))}
       </div>
 
-      <AINudge>{driverPlatforms.includes('doordash')?<>DoorDash Peak Pay active in Wicker Park (+$2/order). Switch now — est. <strong>+$4.20/hr</strong> vs Uber Eats.</>:<>Airport surge ends at 11am. Head to <strong>Midtown</strong> now — avg $28/hr on Tuesdays.</>}</AINudge>
+      <AINudge>{!hasData
+        ? <>No trips logged yet. Tap <strong>Shift</strong> to clock in and log each trip — your real earnings, $/hr and goal progress show up here.</>
+        : remaining > 0
+          ? <>You need about <strong>${Math.ceil(remaining/daysLeft)}/day</strong> for the next {daysLeft} day{daysLeft>1?'s':''} to hit ${goal.toLocaleString()}.{week.perHour ? (() => { const hrs = Math.ceil((remaining/daysLeft)/week.perHour); return hrs <= 14
+              ? <> At your ${week.perHour.toFixed(0)}/hr average that's ~{hrs}h a day.</>
+              : <> At your ${week.perHour.toFixed(0)}/hr average that's more hours than a day has — you may want to adjust this week's goal in <strong>More</strong>.</> })() : null}</>
+          : <>You've hit your weekly goal — nice work. Anything more this week is a bonus.</>}
+      </AINudge>
 
-      {driverPlatforms.length > 1 && visibleSignals.length > 0 && <>
-        <SectionLabel>Cross-platform optimizer</SectionLabel>
+      {weekByApp.length > 0 && <>
+        <SectionLabel>This week by app</SectionLabel>
         <Card style={{ padding:0, overflow:'hidden', marginBottom:10 }}>
-          {visibleSignals.map(s => <OptSignal key={s.id} signal={s}/>)}
-          <div style={{ padding:'10px 14px', fontSize:12, color:'var(--text-muted)', background:'var(--gray-50)' }}>Updated every 5 min · based on your city + active platforms</div>
+          {weekByApp.sort((a,b)=>b.gross-a.gross).map((p,i,arr) => (
+            <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderBottom: i<arr.length-1?'1px solid var(--border)':'none' }}>
+              <span style={{ fontSize:11, fontWeight:700, width:30, color:'var(--text-muted)' }}>{PLATFORMS[p.id]?.logo}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:500 }}>{PLATFORMS[p.id]?.name}</div>
+                <div style={{ fontSize:11, color:'var(--text-muted)' }}>{p.jobs} jobs · ${(p.gross/p.jobs).toFixed(2)} per job{p.perMile!=null?` · $${p.perMile}/mi`:''}</div>
+              </div>
+              <div style={{ fontSize:15, fontWeight:600 }}>${Math.round(p.gross)}</div>
+            </div>
+          ))}
         </Card>
       </>}
 
       <SectionLabel>Best hours today</SectionLabel>
       <Card style={{ marginBottom:16 }}>
         <div style={{ display:'flex', gap:3, alignItems:'flex-end', height:52, marginBottom:6 }}>
-          {mockHours.map((h,i) => {
+          {hours.map((h,i) => {
             const isSelected = selectedHour === i
             const isNow = new Date().getHours() === h.hr
             return (
@@ -183,23 +198,23 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
           })}
         </div>
         <div style={{ display:'flex', gap:3 }}>
-          {mockHours.map((h,i) => <div key={i} style={{ flex:1, textAlign:'center', fontSize:9, fontWeight: selectedHour===i?700:400, color: selectedHour===i?'var(--text-primary)':'var(--text-muted)' }}>{h.l}</div>)}
+          {hours.map((h,i) => <div key={i} style={{ flex:1, textAlign:'center', fontSize:9, fontWeight: selectedHour===i?700:400, color: selectedHour===i?'var(--text-primary)':'var(--text-muted)' }}>{h.l}</div>)}
         </div>
 
         {/* Tap detail panel */}
         {selectedHour !== null && (() => {
-          const h = mockHours[selectedHour]
+          const hh = hours[selectedHour]
           return (
-            <div style={{ marginTop:10, background: h.v==='peak'?'var(--amber-light)':h.v==='high'?'var(--teal-light)':'var(--gray-50)', borderRadius:12, padding:'12px 14px' }}>
+            <div style={{ marginTop:10, background: hh.v==='peak'?'var(--amber-light)':hh.v==='high'?'var(--teal-light)':'var(--gray-50)', borderRadius:12, padding:'12px 14px' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:15, fontWeight:700 }}>{h.l === '12p' ? '12pm' : h.l.includes('a')||h.l.includes('p') ? h.l+'m' : (h.hr < 12 ? h.l+'am' : h.l+'pm')}</span>
-                  <span style={{ fontSize:11, fontWeight:600, padding:'2px 9px', borderRadius:20, background: levelColors[h.v], color: h.v==='low'?'var(--text-secondary)':'#fff' }}>{levelLabels[h.v]}</span>
+                  <span style={{ fontSize:15, fontWeight:700 }}>{hourLabel(hh.hr)}</span>
+                  <span style={{ fontSize:11, fontWeight:600, padding:'2px 9px', borderRadius:20, background: levelColors[hh.v], color: hh.v==='low'?'var(--text-secondary)':'#fff' }}>{levelLabels[hh.v]}</span>
                 </div>
-                <div style={{ fontSize:16, fontWeight:700, color: h.v==='peak'?'var(--amber-dark)':'var(--teal-dark)' }}>~${h.earn}/hr</div>
+                {hh.myAvg!=null && <div style={{ fontSize:13, fontWeight:700, color: hh.v==='peak'?'var(--amber-dark)':'var(--teal-dark)' }}>you avg ${hh.myAvg}/job</div>}
               </div>
-              <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.5 }}>{h.why}</div>
-              {(h.v==='peak'||h.v==='high') && (
+              <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.5 }}>{hh.why}</div>
+              {(hh.v==='peak'||hh.v==='high') && (
                 <div style={{ fontSize:11, fontWeight:600, color:'var(--teal-dark)', marginTop:6 }}>💡 Set a reminder to be online 15 min before</div>
               )}
             </div>
@@ -208,7 +223,7 @@ export default function HomeScreen({ driver, avatar, onTabChange }) {
 
         <div style={{ display:'flex', gap:12, marginTop:10, fontSize:11, color:'var(--text-muted)' }}>
           {[['#EF9F27','Peak'],['#1D9E75','Good'],['rgba(29,158,117,0.3)','Fair']].map(([c,l]) => <span key={l} style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:c, display:'inline-block' }}/>{l}</span>)}
-          <span style={{ marginLeft:'auto' }}>Tap a bar for details</span>
+          <span style={{ marginLeft:'auto' }}>Typical pattern · tap a bar</span>
         </div>
       </Card>
     </div>

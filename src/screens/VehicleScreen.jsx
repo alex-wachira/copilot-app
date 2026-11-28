@@ -131,7 +131,7 @@ export default function VehicleScreen({ onBack }) {
       <Card style={{ marginBottom:16 }}>
         <div style={{ fontSize:13, fontWeight:500, marginBottom:2 }}>IRS-ready year export</div>
         <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:10, lineHeight:1.5 }}>
-          Every trip, mile, tip, and expense — formatted as a spreadsheet your accountant (or TurboTax) can use directly. Includes the $0.67/mi standard deduction column.
+          Every trip, mile, tip, and expense — formatted as a spreadsheet your accountant (or TurboTax) can use directly. Includes the $0.725/mi standard deduction column.
         </div>
         <button onClick={exportTaxCSV} style={{ width:'100%', padding:'12px', borderRadius:11, border:'none', background:'var(--teal)', color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
           📊 Download {new Date().getFullYear()} tax spreadsheet (CSV)

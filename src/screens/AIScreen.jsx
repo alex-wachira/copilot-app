@@ -1,46 +1,34 @@
 import { useState, useRef, useEffect } from 'react'
-import { PLATFORMS, PLATFORM_EARNINGS, OPTIMIZATION_SIGNALS } from '../lib/platforms'
-import { mockSurgeZones, mockEvents, mockTax } from '../lib/mockData'
+import { PLATFORMS } from '../lib/platforms'
 import { supabase } from '../lib/supabase'
+import { aiSummary, periodStats } from '../lib/realStats'
+import { loadCity } from '../lib/cityService'
+import { resolveCityCenter, loadCityPlaces, buildDemandZones, buildHotZones, DEMAND_STYLE } from '../lib/placesService'
 
-// Driver facts only. The AI's instructions and the API key live in the
-// ai-chat edge function on Supabase, never in this file.
-function buildDriverContext(driver) {
+// Driver facts only — all from the driver's own logged data and real
+// places in their city. The AI's instructions and the API key live in
+// the ai-chat edge function on Supabase, never in this file.
+function buildDriverContext(driver, places) {
   const platforms = driver?.platforms || ['uber']
-  const goal = driver?.weeklyGoal || 1000
-  const totalWeek = platforms.reduce((s,id) => s+(PLATFORM_EARNINGS[id]?.week||0), 0)
-  const remaining = goal - totalWeek
-  const platformNames = platforms.map(id => PLATFORMS[id]?.name).join(', ')
+  const names = platforms.map(id => PLATFORMS[id]?.name).filter(Boolean).join(', ')
   const isDelivery = platforms.some(id => PLATFORMS[id]?.type === 'delivery')
+  const now = new Date().toLocaleString('en-US', { weekday:'long', hour:'numeric', minute:'2-digit' })
 
-  const platformDetails = platforms.map(id => {
-    const p = PLATFORMS[id]
-    const e = PLATFORM_EARNINGS[id]
-    if (!p || !e) return ''
-    return `${p.name}: $${e.today} today, $${e.week}/wk, $${e.perHour}/hr, ${e.acceptance}% acceptance${e.completion?`, ${e.completion}% completion`:''}${e.avgTip?`, avg tip $${e.avgTip}`:''}${e.avgWait?`, avg wait ${e.avgWait}min`:''}${e.peakPay?`, $${e.peakPay} peak pay earned`:''}${e.missions?`, ${e.missions} missions active`:''}`
-  }).join('\n')
+  let zones = 'Not loaded yet.'
+  if (places) {
+    const dz = buildDemandZones(places).slice(0, 8).map(z => `- ${z.name}: ${DEMAND_STYLE[z.level].label} (${z.why})`)
+    const hz = isDelivery ? buildHotZones(places).slice(0, 4).map(z => `- ${z.name}: ${DEMAND_STYLE[z.level].label} (${z.why})`) : []
+    const venues = places.venues.slice(0, 6).map(v => v.name).join(', ')
+    zones = [...dz, ...(hz.length ? ['DELIVERY RESTAURANT CLUSTERS:', ...hz] : []), venues ? `BIG VENUES (check schedules): ${venues}` : ''].filter(Boolean).join('\n')
+  }
 
-  const signals = OPTIMIZATION_SIGNALS.filter(s => platforms.includes(s.platform))
-    .map(s => `- ${s.title}: ${s.earnDelta}${s.validUntil?' (until '+s.validUntil+')':''}`)
-    .join('\n')
+  return `DRIVER: ${driver?.name||'Driver'} · ${driver?.city||'unknown city'} · now: ${now}
+APPS: ${names} (${isDelivery?'includes delivery':'rideshare only'})
 
-  return `DRIVER: ${driver?.name||'Driver'} · ${driver?.city||'Chicago'}
-PLATFORMS: ${platformNames} (${isDelivery?'includes delivery':'rideshare only'})
-WEEKLY GOAL: $${goal} · Earned: $${totalWeek} · Remaining: $${remaining} in 3 days
+${aiSummary(driver)}
 
-PLATFORM EARNINGS:
-${platformDetails}
-
-LIVE SURGE/HOT ZONES:
-${mockSurgeZones.map(z=>`- ${z.name}: ${z.mult} (${z.distance}, ${z.ends})`).join('\n')}
-
-CROSS-PLATFORM SIGNALS:
-${signals||'No active signals'}
-
-UPCOMING EVENTS:
-${mockEvents.map(e=>`- ${e.title}: ${e.sub}`).join('\n')}
-
-TAX: Q2 estimate $${mockTax.estimate} due ${mockTax.due} · $${mockTax.saved} saved · $${mockTax.deductions.reduce((s,d)=>s+d.amount,0)} deductions found`
+DEMAND AREAS IN THEIR CITY (estimated from time of day + real places — NOT live surge data; never quote surge multipliers):
+${zones}`
 }
 
 const QUICK_PROMPTS = [
@@ -48,8 +36,8 @@ const QUICK_PROMPTS = [
   { label:'Best app now?', text:'Which app should I be running right now to maximize earnings?' },
   { label:'Best time tonight?', text:'What are the best hours to drive tonight?' },
   { label:'Reduce dead miles', text:'How can I reduce my dead miles this week?' },
-  { label:'Tax tips', text:'What tax deductions am I missing?' },
-  { label:'Surge strategy', text:'How should I play the current surge zones?' },
+  { label:'Tax set-aside', text:'How much should I set aside for taxes, and what can I deduct?' },
+  { label:'Where to go now?', text:'Based on the time and the demand areas in my city, where should I position myself right now?' },
 ]
 
 function TypingIndicator() {
@@ -63,9 +51,20 @@ function TypingIndicator() {
 
 export default function AIScreen({ driver }) {
   const platforms = driver?.platforms || ['uber']
+  const week = periodStats('week')
+  const goal = driver?.weeklyGoal || 1000
+  const [places, setPlaces] = useState(null)
+  useEffect(() => {
+    let alive = true
+    resolveCityCenter(loadCity(), driver?.city)
+      .then(loadCityPlaces).then(p => { if (alive) setPlaces(p) }).catch(() => {})
+    return () => { alive = false }
+  }, [driver?.city])
   const [messages, setMessages] = useState([{
     role:'assistant',
-    content:`Hey ${driver?.name||'Driver'}! 👋 You're running ${platforms.map(id=>PLATFORMS[id]?.name).join(' + ')}. Weekly goal: $${driver?.weeklyGoal||1000} — you're at $${platforms.reduce((s,id)=>s+(PLATFORM_EARNINGS[id]?.week||0),0)} with 3 days left. ${OPTIMIZATION_SIGNALS.find(s=>platforms.includes(s.platform))?.title||'What do you want to work on?'}`,
+    content: week.jobs > 0
+      ? `Hey ${driver?.name||'Driver'}! 👋 You've made $${Math.round(week.gross)} of your $${goal} goal this week across ${week.jobs} jobs. What do you want to work on?`
+      : `Hey ${driver?.name||'Driver'}! 👋 You're set up for ${platforms.map(id=>PLATFORMS[id]?.name).join(' + ')}. Once you log trips on the Shift tab I can coach you on your real numbers — until then, ask me anything about where and when to drive.`,
     time: new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})
   }])
   const [input, setInput] = useState('')
@@ -89,7 +88,7 @@ export default function AIScreen({ driver }) {
       const { data, error } = await supabase.functions.invoke('ai-chat', {
         body: {
           messages: updated.map(m => ({ role: m.role, content: m.content })),
-          context: buildDriverContext(driver),
+          context: buildDriverContext(driver, places),
         },
       })
       let reply

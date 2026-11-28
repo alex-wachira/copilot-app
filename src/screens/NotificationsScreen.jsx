@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { mockNotifications } from '../lib/notifications'
+import { buildNotifications, markNotifsRead } from '../lib/realNotifications'
 import { PLATFORMS } from '../lib/platforms'
 import { Card, SectionLabel } from '../components/UI'
 
@@ -21,12 +21,20 @@ const colorMap = {
   green:  { bg: 'var(--green-light)',  icon: 'var(--green-dark)',  dot: '#639922' },
 }
 
-export default function NotificationsScreen() {
-  const [notifs, setNotifs] = useState(mockNotifications)
+export default function NotificationsScreen({ driver, onTabChange, onRead }) {
+  const [notifs, setNotifs] = useState(() => buildNotifications(driver))
   const unread = notifs.filter(n => !n.read).length
 
-  const markRead = (id) => setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
-  const markAllRead = () => setNotifs(prev => prev.map(n => ({ ...n, read: true })))
+  const markRead = (id) => {
+    markNotifsRead([id]); onRead?.()
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+    const n = notifs.find(x => x.id === id)
+    if (n?.tab) onTabChange?.(n.tab)
+  }
+  const markAllRead = () => {
+    markNotifsRead(notifs.map(n => n.id)); onRead?.()
+    setNotifs(prev => prev.map(n => ({ ...n, read: true })))
+  }
 
   const urgent = notifs.filter(n => n.urgent && !n.read)
   const rest   = notifs.filter(n => !n.urgent || n.read)
@@ -57,7 +65,10 @@ export default function NotificationsScreen() {
         </>
       )}
 
-      <SectionLabel>Earlier</SectionLabel>
+      {notifs.length === 0 && (
+        <Card style={{ marginTop: 12, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>You're all caught up.</Card>
+      )}
+      {rest.length > 0 && <SectionLabel>Earlier</SectionLabel>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
         {rest.map(n => <NotifCard key={n.id} notif={n} onRead={markRead} />)}
       </div>

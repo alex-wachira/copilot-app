@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { weekShiftPlan, estimateHiddenTip } from '../lib/notifications'
+import { estimateHiddenTip } from '../lib/notifications'
+import { buildWeekPlan, myHourlyRate } from '../lib/realPlanner'
 import { Card, SectionLabel } from '../components/UI'
 
 const levelColors = { peak: '#EF9F27', good: '#1D9E75', fair: 'rgba(29,158,117,0.4)' }
@@ -14,15 +15,20 @@ export default function ShiftPlannerScreen({ driver }) {
   const [showTipCalc, setShowTipCalc] = useState(false)
   const [tipInputs, setTipInputs]     = useState({ orderTotal: 35, distanceMiles: 3, restaurantType: 'italian', hourOfDay: new Date().getHours() })
   const tip = estimateHiddenTip(tipInputs)
-  const totalEstWeek = weekShiftPlan.reduce((s,d) => s + parseInt(d.totalEst.replace('$','').replace(',','')), 0)
+  const weekShiftPlan = buildWeekPlan(driver?.platforms || ['uber'])
+  const rate = myHourlyRate()
+  const totalEstWeek = rate ? weekShiftPlan.reduce((s,d) => s + d.totalEst, 0) : null
+  const totalHours = weekShiftPlan.reduce((s,d) => s + d.totalHours, 0)
 
   return (
     <div className="screen" style={{ padding: '0 16px' }}>
       <div style={{ padding: '20px 0 4px' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 2 }}>AI-powered</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 2 }}>next 7 days</div>
         <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.3px' }}>Shift Planner</div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-          Drive the right hours. Est. <strong style={{ color: 'var(--teal)' }}>${totalEstWeek.toLocaleString()}</strong> this week if you follow the plan.
+          {rate
+            ? <>Drive the busiest hours. At your ${rate.toFixed(0)}/hr average, that's about <strong style={{ color: 'var(--teal)' }}>${totalEstWeek.toLocaleString()}</strong> over the next 7 days.</>
+            : <>The usual busiest hours for your apps. Log a few shifts and we'll add dollar estimates based on <strong>your</strong> own $/hr.</>}
         </div>
       </div>
 
@@ -37,7 +43,7 @@ export default function ShiftPlannerScreen({ driver }) {
             minWidth: 58, transition: 'all 0.15s'
           }}>
             <div style={{ fontSize: 11, fontWeight: 500, color: selectedDay === i ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)' }}>{day.day}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: selectedDay === i ? '#EF9F27' : 'var(--text-primary)' }}>{day.totalEst}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: selectedDay === i ? '#EF9F27' : 'var(--text-primary)' }}>{day.totalEst != null ? `$${day.totalEst}` : day.date}</div>
             <div style={{ display: 'flex', gap: 2 }}>
               {day.windows.map((w, j) => (
                 <div key={j} style={{ width: 5, height: 5, borderRadius: 1, background: levelColors[w.level] || '#ccc' }} />
@@ -62,7 +68,6 @@ export default function ShiftPlannerScreen({ driver }) {
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: levelBg[w.level], color: levelText[w.level] }}>
                   {w.level.charAt(0).toUpperCase() + w.level.slice(1)}
                 </span>
-                {w.event && <span style={{ fontSize: 11, color: 'var(--purple)', background: 'var(--purple-light)', padding: '2px 7px', borderRadius: 20, fontWeight: 500 }}>🎵 {w.event}</span>}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {w.level === 'peak' ? 'Highest demand window — prioritize this' : w.level === 'good' ? 'Strong earning window' : 'Moderate — fill gaps here'}
@@ -72,17 +77,26 @@ export default function ShiftPlannerScreen({ driver }) {
           </div>
         ))}
         <div style={{ padding: '11px 14px', background: 'var(--gray-50)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Day total estimate</span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{weekShiftPlan[selectedDay].totalEst}</span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{rate ? 'Day estimate (your avg $/hr)' : 'Hours in these windows'}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{rate ? `~$${weekShiftPlan[selectedDay].totalEst}` : `${weekShiftPlan[selectedDay].totalHours}h`}</span>
         </div>
       </Card>
 
-      {/* Weekly summary */}
-      <Card style={{ marginBottom: 10, background: '#141414', border: 'none' }}>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>If you follow the full plan</div>
-        <div style={{ fontSize: 28, fontWeight: 700, color: '#fff', letterSpacing: '-0.5px' }}>${totalEstWeek.toLocaleString()} <span style={{ fontSize: 14, fontWeight: 400, color: 'rgba(255,255,255,0.4)' }}>estimated</span></div>
-        <div style={{ fontSize: 13, color: 'var(--amber)', marginTop: 4 }}>That's ${(totalEstWeek - (driver?.weeklyGoal || 1000)).toLocaleString()} above your ${(driver?.weeklyGoal || 1000).toLocaleString()} goal 🎯</div>
-      </Card>
+      {/* Weekly summary — only with the driver's own numbers */}
+      {rate && (() => {
+        const goal = driver?.weeklyGoal || 1000
+        const diff = totalEstWeek - goal
+        return (
+          <Card style={{ marginBottom: 10, background: '#141414', border: 'none' }}>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>If you drive all {totalHours} hours in the plan</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#fff', letterSpacing: '-0.5px' }}>~${totalEstWeek.toLocaleString()} <span style={{ fontSize: 14, fontWeight: 400, color: 'rgba(255,255,255,0.4)' }}>at your ${rate.toFixed(0)}/hr average</span></div>
+            <div style={{ fontSize: 13, color: 'var(--amber)', marginTop: 4 }}>{diff >= 0 ? `About $${diff.toLocaleString()} above` : `About $${Math.abs(diff).toLocaleString()} short of`} your ${goal.toLocaleString()} weekly goal</div>
+          </Card>
+        )
+      })()}
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', margin: '0 8px 8px', lineHeight: 1.5 }}>
+        Windows show typical demand patterns for your apps (commutes, airport, nightlife, meal times) — not guaranteed surge.
+      </div>
 
       {/* Hidden tip estimator */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '16px 0 8px' }}>
@@ -95,7 +109,7 @@ export default function ShiftPlannerScreen({ driver }) {
       {showTipCalc && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
-            DoorDash hides tips over $8 — showing "$8+" even when it's $20+. Estimate the real tip before you accept.
+            DoorDash can show large tips as "$8+". This gives a rough guess of the real tip from typical tipping patterns — it's an estimate, not a guarantee.
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>

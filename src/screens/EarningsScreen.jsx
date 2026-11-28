@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { mockEarnings, mockInsights, mockWeekBars } from '../lib/mockData'
+import { periodStats, weekBars, insights } from '../lib/realStats'
 import { Card, SectionLabel } from '../components/UI'
 
 const periods = ['month', 'week', 'today']
@@ -20,8 +20,11 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function EarningsScreen() {
   const [period, setPeriod] = useState('month')
-  const data = mockEarnings[period]
-  const maxBar = Math.max(...mockWeekBars.map(b => b.val))
+  const data = periodStats(period)
+  const bars = weekBars()
+  const maxBar = Math.max(...bars.map(b => b.val))
+  const ins = insights()
+  const label = { month:'This month', week:'This week', today:'Today' }[period]
 
   return (
     <div className="screen" style={{ padding: '0 16px' }}>
@@ -48,21 +51,22 @@ export default function EarningsScreen() {
 
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
           <div style={{ fontSize: 42, fontWeight: 600, letterSpacing: '-1px', color: 'var(--text-primary)' }}>
-            ${data.total.toLocaleString()}
+            ${data.gross.toLocaleString(undefined,{ maximumFractionDigits:0 })}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{data.label}</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{label}{data.hours > 0 ? ` · ${data.hours.toFixed(1)}h online` : ''}{data.perHour ? ` · $${data.perHour}/hr` : ''}</div>
         </div>
 
         {/* Bar chart */}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>This week, Mon–Sun</div>
         <div style={{ height: 100 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={mockWeekBars} barCategoryGap="20%">
+            <BarChart data={bars} barCategoryGap="20%">
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9e9d99' }} axisLine={false} tickLine={false} />
               <YAxis hide />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
               <Bar dataKey="val" radius={[4, 4, 0, 0]}>
-                {mockWeekBars.map((b, i) => (
-                  <Cell key={i} fill={b.val === maxBar ? '#EF9F27' : '#1D9E75'} />
+                {bars.map((b, i) => (
+                  <Cell key={i} fill={maxBar > 0 && b.val === maxBar ? '#EF9F27' : '#1D9E75'} />
                 ))}
               </Bar>
             </BarChart>
@@ -70,23 +74,29 @@ export default function EarningsScreen() {
         </div>
       </Card>
 
-      {/* Insights grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-        {mockInsights.map(ins => (
-          <div key={ins.label} style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', padding: '10px 12px' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>{ins.label}</div>
-            <div style={{ fontSize: 17, fontWeight: 600 }}>{ins.value}</div>
-            <div style={{ fontSize: 11, marginTop: 2, color: ins.up ? 'var(--teal)' : 'var(--text-muted)' }}>{ins.note}</div>
-          </div>
-        ))}
-      </div>
+      {/* Insights grid — from your own logged trips */}
+      {ins ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+          {ins.map(x => (
+            <div key={x.label} style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', padding: '10px 12px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>{x.label}</div>
+              <div style={{ fontSize: 17, fontWeight: 600 }}>{x.value}</div>
+              <div style={{ fontSize: 11, marginTop: 2, color: 'var(--text-muted)' }}>{x.note}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Card style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
+          Log at least 3 trips on the <strong>Shift</strong> tab to unlock your best day, best hour and averages.
+        </Card>
+      )}
 
       <SectionLabel>Breakdown</SectionLabel>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         {[
-          { label: 'Base fares', sub: `${data.rides} rides`, val: data.breakdown.base, color: 'var(--text-primary)' },
-          { label: 'Surge earnings', sub: `${data.surgeRides} surge rides`, val: data.breakdown.surge, color: 'var(--amber-dark)' },
-          { label: 'Tips', sub: `${data.tipRate}% tip rate`, val: data.breakdown.tips, color: 'var(--teal-dark)' },
+          { label: 'Fares & payouts', sub: `${data.jobs} job${data.jobs===1?'':'s'}`, val: data.base, color: 'var(--text-primary)' },
+          { label: 'Tips', sub: data.tipRate!=null ? `${data.tipRate}% of jobs tipped` : 'no jobs yet', val: data.tips, color: 'var(--teal-dark)' },
+          { label: 'Expenses', sub: 'gas, tolls, parking you logged', val: -data.expenses, color: 'var(--coral)' },
         ].map((row, i, arr) => (
           <div key={row.label} style={{
             display: 'flex', alignItems: 'center', padding: '11px 14px',
@@ -96,12 +106,12 @@ export default function EarningsScreen() {
               <div style={{ fontSize: 13, fontWeight: 500 }}>{row.label}</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{row.sub}</div>
             </div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: row.color }}>${row.val.toLocaleString()}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: row.color }}>{row.val < 0 ? '−' : ''}${Math.abs(row.val).toLocaleString(undefined,{ maximumFractionDigits:2 })}</div>
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--gray-50)' }}>
-          <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Total</div>
-          <div style={{ fontSize: 17, fontWeight: 600 }}>${data.total.toLocaleString()}</div>
+          <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Take-home before car costs & tax</div>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>${(data.gross - data.expenses).toLocaleString(undefined,{ maximumFractionDigits:2 })}</div>
         </div>
       </Card>
     </div>
