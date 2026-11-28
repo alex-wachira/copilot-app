@@ -114,6 +114,9 @@ export default function TaxesScreen() {
         </svg>
         Generate tax report (PDF)
       </button>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, margin: '0 8px 16px' }}>
+        Estimates for planning only — not tax, accounting or financial advice. Check with a tax professional before you file.
+      </div>
     </div>
   )
 }

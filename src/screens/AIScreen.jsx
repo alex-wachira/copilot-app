@@ -85,7 +85,7 @@ export default function AIScreen({ driver }) {
     setLoading(true)
     try {
       // Ask the ai-chat robot on Supabase. It checks who you are, counts
-      // today's questions, and holds the Claude key on the server.
+      // today's questions, and holds the AI key on the server.
       const { data, error } = await supabase.functions.invoke('ai-chat', {
         body: {
           messages: updated.map(m => ({ role: m.role, content: m.content })),
@@ -155,7 +155,7 @@ export default function AIScreen({ driver }) {
           </button>
         </div>
         <div style={{ fontSize:11, color:'var(--text-muted)', textAlign:'center', marginTop:8 }}>
-          Knows your earnings, surge zones, hot zones & taxes
+          AI can be wrong · not tax or financial advice · never type while driving
         </div>
       </div>
     </div>

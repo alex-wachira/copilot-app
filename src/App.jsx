@@ -14,6 +14,7 @@ import OfferEvaluatorScreen from './screens/OfferEvaluatorScreen'
 import ShiftScreen from './screens/ShiftScreen'
 import ResetPasswordScreen from './screens/ResetPasswordScreen'
 import PrivacyScreen from './screens/PrivacyScreen'
+import LegalScreen, { LEGAL_PATHS } from './screens/LegalScreen'
 import VehicleScreen from './screens/VehicleScreen'
 import OracleScreen from './screens/OracleScreen'
 import { supabase } from './lib/supabase'
@@ -120,6 +121,10 @@ export default function App() {
     await supabase.auth.signOut()   // ends the session for real
     leave()
   }
+
+  // Public legal pages work for everyone, signed in or not
+  const legalPage = LEGAL_PATHS[window.location.pathname]
+  if (legalPage) return <LegalScreen page={legalPage} />
 
   if (recoveryMode) return <ResetPasswordScreen onDone={() => { setRecoveryMode(false); window.location.hash = ''; }} />
 

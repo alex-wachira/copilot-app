@@ -39,6 +39,7 @@ export default function AuthScreen({ user, onAuth, onSaveSetup }) {
   const [error, setError]           = useState('')
   const [forgotSent, setForgotSent] = useState(false)
   const [confirmSent, setConfirmSent] = useState(false)
+  const [agreed, setAgreed]         = useState(false)
 
   useEffect(() => { if (user && step === 'account') setStep('platforms') }, [user])
 
@@ -56,7 +57,14 @@ export default function AuthScreen({ user, onAuth, onSaveSetup }) {
         setLoading(false)
         return
       } else {
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
+        if (!agreed) throw new Error('Please confirm you are 18+ and agree to the Terms and Privacy Policy')
+        const { data, error } = await supabase.auth.signUp({
+          email, password,
+          options: {
+            data: { name, terms_accepted_at: new Date().toISOString(), terms_version: '2026-11-27' },
+            emailRedirectTo: window.location.origin,
+          },
+        })
         if (error) throw error
         if (!data.session) {
           // Email confirmation is on: they must click the link, then sign in
@@ -139,7 +147,7 @@ export default function AuthScreen({ user, onAuth, onSaveSetup }) {
               
               {/* Password field with show/hide */}
               <div style={{ position:'relative' }}>
-                <input type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password" required style={{ ...inputStyle, paddingRight:44 }}/>
+                <input type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder={mode==='signup'?'Password (10+ characters, letters & numbers)':'Password'} required style={{ ...inputStyle, paddingRight:44 }}/>
                 <button type="button" onClick={()=>setShowPass(p=>!p)} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', padding:4 }}>
                   {showPassword
                     ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -148,11 +156,17 @@ export default function AuthScreen({ user, onAuth, onSaveSetup }) {
                 </button>
               </div>
 
+              {mode==='signup'&&(
+                <label style={{ display:'flex', alignItems:'flex-start', gap:9, fontSize:13, color:'var(--text-secondary)', lineHeight:1.45, cursor:'pointer' }}>
+                  <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{ marginTop:3, width:16, height:16, flexShrink:0 }}/>
+                  <span>I'm 18 or older and agree to the <a href="/terms" target="_blank" rel="noreferrer" style={{ color:'var(--teal)' }}>Terms</a> and <a href="/privacy-policy" target="_blank" rel="noreferrer" style={{ color:'var(--teal)' }}>Privacy Policy</a>.</span>
+                </label>
+              )}
               {error&&<p style={{ fontSize:13, color:'var(--coral)', textAlign:'center', margin:0 }}>{error}</p>}
               {confirmSent&&<p style={{ fontSize:13, color:'var(--teal)', textAlign:'center', margin:0 }}>✓ Check your email to confirm your account, then sign in here</p>}
               {forgotSent&&<p style={{ fontSize:13, color:'var(--teal)', textAlign:'center', margin:0 }}>✓ Reset link sent — check your email</p>}
 
-              <button type="submit" disabled={loading} style={{ ...primaryBtn, opacity:loading?0.7:1 }}>
+              <button type="submit" disabled={loading || (mode==='signup' && !agreed)} style={{ ...primaryBtn, opacity:(loading || (mode==='signup' && !agreed))?0.5:1 }}>
                 {loading?'Loading…':mode==='signup'?'Continue →':'Sign in →'}
               </button>
 

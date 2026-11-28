@@ -21,9 +21,10 @@ const DATA_COLLECTED = [
 
 const THIRD_PARTIES = [
   { name:'Supabase', role:'Database & authentication', data:'Account, trips, expenses (encrypted at rest)' },
-  { name:'Anthropic (Claude)', role:'AI assistant', data:'Your questions + earnings context for personalized answers. Not used to train models.' },
+  { name:'Google (Gemini)', role:'AI assistant', data:'Your questions + a short earnings summary. On the free tier Google may use these to improve its products — avoid sharing sensitive details in chat.' },
   { name:'Vercel', role:'App hosting', data:'Standard web logs (IP, browser type)' },
-  { name:'OpenStreetMap', role:'Maps', data:'Map tile requests near your location' },
+  { name:'OpenStreetMap', role:'Maps & places', data:'The map area or city you view (no account details)' },
+  { name:'Resend', role:'Account emails', data:'Your email address, to send confirmations and password resets' },
 ]
 
 const WE_NEVER = [
@@ -145,6 +146,10 @@ export default function PrivacyScreen({ driver, onSignOut, onBack }) {
           </div>
         ))}
       </Card>
+      <div style={{ display:'flex', justifyContent:'center', gap:18, fontSize:13, margin:'-2px 0 14px' }}>
+        <a href="/privacy-policy" target="_blank" rel="noreferrer" style={{ color:'var(--teal)', fontWeight:500 }}>Full Privacy Policy →</a>
+        <a href="/terms" target="_blank" rel="noreferrer" style={{ color:'var(--teal)', fontWeight:500 }}>Terms of Service →</a>
+      </div>
 
       {/* Data controls */}
       <SectionLabel>Your data controls</SectionLabel>
